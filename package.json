@@ -1,0 +1,14 @@
+
+{
+  "name": "IntrenshipSearchHelp",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/functions/*.js",
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@azure/functions": "^4.17.0",
+    "durable-functions": "^3.6.0"
+  }
+}
