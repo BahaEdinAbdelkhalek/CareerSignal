@@ -1,49 +1,182 @@
-"use strict";
+﻿"use strict";
 
 const { app } = require("@azure/functions");
 const df = require("durable-functions");
 const { randomUUID } = require("node:crypto");
+const pdfParse = require("pdf-parse");
 const { saveCvText } = require("../services/storage");
+
+const MAX_PDF_SIZE = 10 * 1024 * 1024;
+const MAX_TEXT_SIZE = 100000;
+
+function parsePreferences(value) {
+    if (!value) return {};
+
+    if (typeof value === "object" && !Array.isArray(value)) {
+        return value;
+    }
+
+    if (typeof value === "string") {
+        try {
+            const parsed = JSON.parse(value);
+
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                return parsed;
+            }
+        } catch {
+            throw new Error("Preferences must contain valid JSON.");
+        }
+    }
+
+    throw new Error("Preferences must be a JSON object.");
+}
 
 app.http("StartCareerSignal", {
     route: "career-signal",
     methods: ["POST"],
     authLevel: "function",
     extraInputs: [df.input.durableClient()],
+
     handler: async (request, context) => {
-        let body;
         try {
-            body = await request.json();
-        } catch {
-            return { status: 400, jsonBody: { error: "Request body must be valid JSON." } };
-        }
+            const contentType =
+                request.headers.get("content-type") || "";
 
-        const cvText = typeof body.cvText === "string" ? body.cvText.trim() : "";
-        const preferences = body.preferences && typeof body.preferences === "object"
-            ? body.preferences
-            : {};
+            let cvText = "";
+            let preferences = {};
 
-        if (!cvText) {
+            // PDF upload
+            if (contentType.includes("multipart/form-data")) {
+                const form = await request.formData();
+
+                const uploadedFile = form.get("cv");
+
+                if (
+                    !uploadedFile ||
+                    typeof uploadedFile.arrayBuffer !== "function"
+                ) {
+                    return {
+                        status: 400,
+                        jsonBody: {
+                            error: 'Missing PDF. Use the form-data field "cv".'
+                        }
+                    };
+                }
+
+                const filename = uploadedFile.name || "";
+
+                if (!filename.toLowerCase().endsWith(".pdf")) {
+                    return {
+                        status: 400,
+                        jsonBody: {
+                            error: "Only PDF files are supported."
+                        }
+                    };
+                }
+
+                if (uploadedFile.size > MAX_PDF_SIZE) {
+                    return {
+                        status: 413,
+                        jsonBody: {
+                            error: "PDF exceeds the 10 MB limit."
+                        }
+                    };
+                }
+
+                const buffer = Buffer.from(
+                    await uploadedFile.arrayBuffer()
+                );
+
+                const pdfData = await pdfParse(buffer);
+
+                cvText = (pdfData.text || "").trim();
+
+                if (!cvText) {
+                    return {
+                        status: 422,
+                        jsonBody: {
+                            error: "No text found in PDF. Scanned PDFs require OCR."
+                        }
+                    };
+                }
+
+                preferences = parsePreferences(
+                    form.get("preferences")
+                );
+
+            // Existing JSON support
+            } else if (contentType.includes("application/json")) {
+                const body = await request.json();
+
+                cvText =
+                    typeof body.cvText === "string"
+                        ? body.cvText.trim()
+                        : "";
+
+                preferences = parsePreferences(body.preferences);
+
+            } else {
+                return {
+                    status: 415,
+                    jsonBody: {
+                        error: "Use multipart/form-data for PDF uploads or application/json for text CVs."
+                    }
+                };
+            }
+
+            if (!cvText) {
+                return {
+                    status: 400,
+                    jsonBody: {
+                        error: "CV text is empty."
+                    }
+                };
+            }
+
+            if (cvText.length > MAX_TEXT_SIZE) {
+                return {
+                    status: 413,
+                    jsonBody: {
+                        error: "CV text exceeds 100,000 characters."
+                    }
+                };
+            }
+
+            const instanceId = randomUUID();
+
+            const cvBlobName = await saveCvText(
+                cvText,
+                instanceId
+            );
+
+            const client = df.getClient(context);
+
+            await client.startNew(
+                "CareerSignalOrchestrator",
+                {
+                    instanceId,
+                    input: {
+                        cvBlobName,
+                        preferences
+                    }
+                }
+            );
+
+            return client.createCheckStatusResponse(
+                request,
+                instanceId
+            );
+
+        } catch (error) {
+            context.error("CareerSignal startup failed:", error);
+
             return {
-                status: 400,
-                jsonBody: { error: "Provide the CV as plain text in the cvText field." }
+                status: 500,
+                jsonBody: {
+                    error: "Failed to start CareerSignal.",
+                    details: error.message
+                }
             };
         }
-
-        if (cvText.length > 100000) {
-            return { status: 413, jsonBody: { error: "CV text is too large (maximum 100,000 characters)." } };
-        }
-
-        const instanceId = randomUUID();
-        const cvBlobName = await saveCvText(cvText, instanceId);
-        const client = df.getClient(context);
-
-        await client.startNew("CareerSignalOrchestrator", {
-            instanceId,
-            input: { cvBlobName, preferences }
-        });
-
-        // Return the real Durable Functions status/query/terminate URLs.
-        return client.createCheckStatusResponse(request, instanceId);
     }
 });

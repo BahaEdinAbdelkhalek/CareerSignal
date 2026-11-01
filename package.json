@@ -1,4 +1,3 @@
-
 {
   "name": "IntrenshipSearchHelp",
   "version": "1.0.0",
@@ -9,6 +8,7 @@
   },
   "dependencies": {
     "@azure/functions": "^4.17.0",
-    "durable-functions": "^3.6.0"
+    "durable-functions": "^3.6.0",
+    "pdf-parse": "^1.1.1"
   }
 }
