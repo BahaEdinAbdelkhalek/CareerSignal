@@ -20,7 +20,8 @@ function extractJson(text) {
 
 async function chatJson(systemPrompt, userPrompt) {
     const endpoint = process.env.FOUNDRY_ENDPOINT?.replace(/\/+$/, "");
-    const apiKey = await getSecret("FOUNDRY_API_KEY");
+  const apiKey = await getSecret("FOUNDRY-API-KEY");
+
     const deployment = process.env.FOUNDRY_MODEL_DEPLOYMENT || "careersignal-model";
 
     if (!endpoint) throw new Error("Missing app setting: FOUNDRY_ENDPOINT");
