@@ -1,4 +1,4 @@
-﻿"use strict";
+"use strict";
 
 const { app } = require("@azure/functions");
 const df = require("durable-functions");
@@ -8,14 +8,15 @@ const { saveCvText } = require("../services/storage");
 
 async function extractPdfText(buffer) {
     const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
-
-    const pdf = await pdfjs.getDocument({
+    const loadingTask = pdfjs.getDocument({
         data: new Uint8Array(buffer)
-    }).promise;
+    });
 
     let text = "";
 
     try {
+        const pdf = await loadingTask.promise;
+
         for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
             const page = await pdf.getPage(pageNumber);
             const content = await page.getTextContent();
@@ -25,13 +26,12 @@ async function extractPdfText(buffer) {
                 .map(item => item.str)
                 .join(" ") + "\n";
         }
+
+        return text;
     } finally {
-        await pdf.destroy();
+        await loadingTask.destroy();
     }
-
-    return text;
 }
-
 const MAX_PDF_SIZE = 10 * 1024 * 1024;
 const MAX_TEXT_SIZE = 100000;
 
