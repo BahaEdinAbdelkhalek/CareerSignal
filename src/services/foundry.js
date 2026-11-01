@@ -59,7 +59,8 @@ async function chatJson(systemPrompt, userPrompt) {
         body: JSON.stringify({
             model: deployment,
             instructions: systemPrompt,
-            input: userPrompt,
+            // Azure requires the literal word "json" in the input when json_object mode is enabled.
+            input: `Return a valid json object only.\n${userPrompt}`,
             text: {
                 format: { type: "json_object" }
             }
