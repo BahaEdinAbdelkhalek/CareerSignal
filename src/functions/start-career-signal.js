@@ -86,6 +86,13 @@ app.http("StartCareerSignal", {
                 const buffer = Buffer.from(
                     await uploadedFile.arrayBuffer()
                 );
+            context.log("PDF diagnostics:", {
+                filename,
+                declaredSize: uploadedFile.size,
+                bufferLength: buffer.length,
+                header: buffer.subarray(0, 8).toString("ascii"),
+                headerHex: buffer.subarray(0, 8).toString("hex")
+            });
 
                 const pdfData = await pdfParse(buffer);
 
