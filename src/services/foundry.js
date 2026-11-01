@@ -1,5 +1,7 @@
 "use strict";
 
+const { getSecret } = require("./key-vault");
+
 function extractJson(text) {
     const cleaned = String(text || "")
         .replace(/^```(?:json)?\s*/i, "")
@@ -18,7 +20,7 @@ function extractJson(text) {
 
 async function chatJson(systemPrompt, userPrompt) {
     const endpoint = process.env.FOUNDRY_ENDPOINT?.replace(/\/+$/, "");
-    const apiKey = process.env.FOUNDRY_API_KEY;
+    const apiKey = await getSecret("FOUNDRY_API_KEY");
     const deployment = process.env.FOUNDRY_MODEL_DEPLOYMENT || "careersignal-model";
 
     if (!endpoint) throw new Error("Missing app setting: FOUNDRY_ENDPOINT");
