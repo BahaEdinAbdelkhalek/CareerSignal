@@ -1,0 +1,9 @@
+node_modules/
+.azurefunctions/
+.vscode/
+local.settings.json
+.env
+.env.*
+!.env.example
+*.log
+coverage/
