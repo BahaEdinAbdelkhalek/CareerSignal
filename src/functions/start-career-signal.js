@@ -31,6 +31,7 @@ async function extractPdfText(buffer) {
 
     return text;
 }
+
 const MAX_PDF_SIZE = 10 * 1024 * 1024;
 const MAX_TEXT_SIZE = 100000;
 
@@ -118,11 +119,7 @@ app.http("StartCareerSignal", {
                 header: buffer.subarray(0, 8).toString("ascii"),
                 headerHex: buffer.subarray(0, 8).toString("hex")
             });
-
-                const pdfData = await pdfParse(buffer);
-
-                cvText = (pdfData.text || "").trim();
-
+                cvText = (await extractPdfText(buffer)).trim();
                 if (!cvText) {
                     return {
                         status: 422,
@@ -212,4 +209,6 @@ app.http("StartCareerSignal", {
         }
     }
 });
+
+
 
