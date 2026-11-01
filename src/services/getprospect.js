@@ -5,7 +5,7 @@ const { getSecret } = require("./key-vault");
 const BASE_URL = "https://api.getprospect.com";
 
 async function post(path, body) {
-    const apiKey = await getSecret("GETPROSPECT_API_KEY");
+const apiKey = await getSecret("GetProspectApiKey");
     if (!apiKey) throw new Error("Missing app setting: GETPROSPECT_API_KEY");
 
     const response = await fetch(`${BASE_URL}${path}`, {
