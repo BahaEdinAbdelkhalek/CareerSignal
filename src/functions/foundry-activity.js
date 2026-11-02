@@ -1,14 +1,19 @@
 "use strict";
 
 const df = require("durable-functions");
-const { readCvText } = require("../services/storage");
+const { readCvText, deleteCvText } = require("../services/storage");
 const { analyseCv, createDrafts } = require("../services/foundry");
 
 df.app.activity("FoundryActivity", {
     handler: async input => {
         if (input.action === "analyse") {
-            const cvText = await readCvText(input.cvBlobName);
-            return analyseCv(cvText, input.preferences || {});
+            try {
+                const cvText = await readCvText(input.cvBlobName);
+                return await analyseCv(cvText, input.preferences || {});
+            } finally {
+                // CV text is a temporary claim-check payload, not a retained profile.
+                await deleteCvText(input.cvBlobName).catch(() => undefined);
+            }
         }
 
         if (input.action === "drafts") {

@@ -8,3 +8,5 @@ require("./functions/company-discovery");
 require("./functions/hr-contact-discovery");
 require("./functions/email-enrichment");
 require("./functions/foundry-activity");
+require("./functions/retention");
+require("./functions/delete-career-signal");
