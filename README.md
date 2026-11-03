@@ -1,11 +1,19 @@
 # CareerSignal
 
-[![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
-[![Angular 20](https://img.shields.io/badge/Angular-20-DD0031?logo=angular&logoColor=white)](https://angular.dev/)
-[![Azure Functions v4](https://img.shields.io/badge/Azure%20Functions-v4-0062AD?logo=azurefunctions&logoColor=white)](https://learn.microsoft.com/azure/azure-functions/)
-[![Demo mode](https://img.shields.io/badge/Public%20demo-fictional%20data-16865A)](CareerSignal-Web/README.md)
-
 ![CareerSignal cover](CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png)
+
+---
+
+<p>
+  <br>
+  <img alt="Node.js 24+" src="https://img.shields.io/badge/Node.js-24%2B-339933.svg?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img alt="Angular 20" src="https://img.shields.io/badge/Angular-20-DD0031.svg?style=for-the-badge&logo=angular&logoColor=white" />
+  <img alt="Azure Functions v4" src="https://img.shields.io/badge/Azure%20Functions-v4-0062AD.svg?style=for-the-badge&logo=azurefunctions&logoColor=white" />
+  <img alt="Azure Durable Functions" src="https://img.shields.io/badge/Azure-Durable%20Functions-0062AD.svg?style=for-the-badge&logo=microsoftazure&logoColor=white" />
+  <img alt="Demo uses fictional data" src="https://img.shields.io/badge/Public%20Demo-Fictional%20Data-16865A.svg?style=for-the-badge" />
+</p>
+
+---
 
 CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares an individual outreach draft for each selected contact.
 
