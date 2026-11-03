@@ -1,10 +1,15 @@
 # CareerSignal
 
+[![Node.js 24+](https://img.shields.io/badge/Node.js-24%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Angular 20](https://img.shields.io/badge/Angular-20-DD0031?logo=angular&logoColor=white)](https://angular.dev/)
+[![Azure Functions v4](https://img.shields.io/badge/Azure%20Functions-v4-0062AD?logo=azurefunctions&logoColor=white)](https://learn.microsoft.com/azure/azure-functions/)
+[![Demo mode](https://img.shields.io/badge/Public%20demo-fictional%20data-16865A)](CareerSignal-Web/README.md)
+
 ![CareerSignal cover](CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png)
 
-CareerSignal turns a candidate's CV and search preferences into a short, explainable list of relevant companies and HR / Talent Acquisition contacts, then prepares individual outreach email drafts.
+CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares an individual outreach draft for each selected contact.
 
-It is a **contact-discovery and outreach-preparation workflow**. It does not discover or verify open vacancies, send emails, guarantee a reply, or guarantee that a company is hiring.
+It focuses on **contact discovery and outreach preparation**. It does not discover vacancies, verify that a company is hiring, or send email. Public frontend demo data is fictional; live browser access remains disabled until a secure authenticated API gateway is available.
 
 ## What the workflow does
 
