@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
-import { fileURLToPath } from 'node:url';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createCareerSignalServer } from './server.mjs';
 
-const ASSET_DIRECTORY = fileURLToPath(new URL('./dist/careersignal/browser', import.meta.url));
-
-test('container serves Angular and rejects unauthenticated gateway calls', async () => {
+test('container serves the SPA and rejects unauthenticated gateway calls', async () => {
+  const assetDirectory = await mkdtemp(join(tmpdir(), 'careersignal-assets-'));
+  await writeFile(join(assetDirectory, 'index.html'), '<app-root>test</app-root>');
   const server = createCareerSignalServer({
-    assetDirectory: ASSET_DIRECTORY,
+    assetDirectory,
     env: { CAREERSIGNAL_AUTH_PROVIDER: 'azure', CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com' },
   });
   server.listen(0, '127.0.0.1');
@@ -51,5 +53,6 @@ test('container serves Angular and rejects unauthenticated gateway calls', async
   } finally {
     server.close();
     await once(server, 'close');
+    await rm(assetDirectory, { recursive: true, force: true });
   }
 });
