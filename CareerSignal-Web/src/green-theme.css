@@ -1,0 +1,7 @@
+/* Sport-green accents on a neutral, low-noise interface. */
+:root{--green:#00c853;--green-dark:#008f45;--green-pale:#e8f8ee}
+.button.primary{background:var(--green);color:#102516}
+.button.primary:hover{background:#00b94d}
+.mode-label,.tag-list span{background:var(--green-pale);color:#226a3b}
+.upload-zone:hover,.upload-zone.has-file{border-color:var(--green-dark);background:#f7fcf8}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--green-dark);box-shadow:0 0 0 2px #00c85324}

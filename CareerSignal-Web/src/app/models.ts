@@ -1,0 +1,6 @@
+export interface Preferences { countryCodes: string[]; targetRoles: string[]; internshipDuration: string; startDate: string; additionalRequirements: string; }
+export interface Analysis { candidateSummary: string; skills: string[]; targetRoles: string[]; companyKeywords: string[]; hrJobTitles: string[]; countryCodes: string[]; matchingCriteria: string[]; gaps: string[]; }
+export interface Company { id: string; name: string; industry?: string; location?: string | { country_code?: string; city?: string }; fitScore?: number; matchReasons?: string[]; website?: string; }
+export interface Contact { id?: string; fullName?: string; title?: string; company?: string; companyId?: string; linkedinUrl?: string; email?: string | null; emailStatus?: string | null; enrichmentStatus?: string; fitScore?: number; matchReasons?: string[]; }
+export interface Draft { contactId?: string; recipient?: string; fullName?: string; company?: string; companyName?: string; email?: string | null; emailStatus?: string | null; subject: string; body: string; personalizationEvidence?: string[]; }
+export interface CareerSignalResult { analysis: Analysis; companies: Company[]; contacts: Contact[]; drafts: { results: Draft[] }; summary?: Record<string, number>; }
