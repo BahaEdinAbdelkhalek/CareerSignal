@@ -3,7 +3,7 @@
   "version": 1,
   "newProjectRoot": "projects",
   "projects": {
-    "intrenshipsearchhelp": {
+    "careersignal": {
       "projectType": "application",
       "root": "",
       "sourceRoot": "src",
@@ -11,7 +11,7 @@
         "build": {
           "builder": "@angular-devkit/build-angular:application",
           "options": {
-            "outputPath": "dist/intrenshipsearchhelp",
+            "outputPath": "dist/careersignal",
             "index": "src/index.html",
             "browser": "src/main.ts",
             "polyfills": ["zone.js"],
@@ -28,8 +28,8 @@
         "serve": {
           "builder": "@angular-devkit/build-angular:dev-server",
           "configurations": {
-            "production": {"buildTarget":"intrenshipsearchhelp:build:production"},
-            "development": {"buildTarget":"intrenshipsearchhelp:build:development"}
+            "production": {"buildTarget":"careersignal:build:production"},
+            "development": {"buildTarget":"careersignal:build:development"}
           },
           "defaultConfiguration":"development"
         }

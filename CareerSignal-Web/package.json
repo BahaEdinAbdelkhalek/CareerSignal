@@ -1,5 +1,5 @@
 {
-  "name": "intrenshipsearchhelp",
+  "name": "careersignal",
   "version": "1.0.0",
   "private": true,
   "scripts": { "start": "ng serve", "build": "ng build", "test": "ng test --watch=false" },

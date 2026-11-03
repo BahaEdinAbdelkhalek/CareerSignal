@@ -1,4 +1,4 @@
-name: Deploy IntrenshipSearchHelp to Azure Static Web Apps
+name: Deploy CareerSignal to Azure Static Web Apps
 on:
   push:
     branches: [main]
@@ -26,7 +26,7 @@ jobs:
           action: upload
           app_location: "/"
           api_location: ""
-          output_location: "dist/intrenshipsearchhelp/browser"
+          output_location: "dist/careersignal/browser"
   close_pull_request:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
     runs-on: ubuntu-latest

@@ -1,4 +1,4 @@
-# IntrenshipSearchHelp
+# CareerSignal
 
 ## CareerSignal
 
@@ -137,13 +137,13 @@ npm ci
 npm start
 ```
 
-Build it for production with `npm run build`. The output is `CareerSignal-Web/dist/intrenshipsearchhelp/browser`.
+Build it for production with `npm run build`. The output is `CareerSignal-Web/dist/careersignal/browser`.
 
 The live Angular adapter reflects the observed backend submit/status/result contract, but live mode is intentionally disabled. The backend currently uses Function-key authorization and does not provide user sign-in or per-user ownership. Do not put a Function key or Durable management URL in the browser. Before enabling live CV processing, add the authenticated, owner-aware server-side API facade described in [`docs/azure-hosting.md`](docs/azure-hosting.md).
 
 ## Frontend hosting
 
-Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The frontend's deployment workflow and project configuration live under `CareerSignal-Web`; the current workflow expects the Angular app to be the repository root. If deploying this monorepo, configure the workflow's app location and npm working directory for `CareerSignal-Web`, and use `dist/intrenshipsearchhelp/browser` as the output location. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The frontend's deployment workflow and project configuration live under `CareerSignal-Web`; the current workflow expects the Angular app to be the repository root. If deploying this monorepo, configure the workflow's app location and npm working directory for `CareerSignal-Web`, and use `dist/careersignal/browser` as the output location. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
 
 ## Backend deployment
 
