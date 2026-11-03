@@ -4,7 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DemoDataService } from './demo-data.service';
 import { CareerSignalApiService } from './career-signal-api.service';
 import { CareerSignalResult, Contact, Draft, Preferences } from './models';
-import { environment } from '../environments/environment';
+
 
 type CountryOption = { code: string; name: string };
 const ISO_COUNTRY_CODES = `AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS YE YT ZA ZM ZW`;
@@ -18,7 +18,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
   template: `
     <header class="app-header">
       <a class="brand" href="#workspace"><img class="brand-logo" src="/assets/careersignal-logo.png" alt="CareerSignal"></a>
-
+      <button class="mode-label mode-toggle" type="button" (click)="toggleMode()" [attr.aria-label]="liveMode ? 'Switch to demo mode' : 'Sign in for live search'">{{ liveMode ? 'Live' : 'Demo' }}</button>
     </header>
 
     <main id="workspace" class="app-shell">
@@ -35,7 +35,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
               <input id="cv" type="file" accept="application/pdf,.pdf" (change)="selectFile($event)">
               <span class="upload-mark">+</span>
               <strong>{{ file?.name || 'Choose a PDF or drop it here' }}</strong>
-              <small>{{ file ? (file.size / 1024 / 1024 | number:'1.1-1') + ' MB' : 'Selected file stays on this device' }}</small>
+              <small>{{ file ? (file.size / 1024 / 1024 | number:'1.1-1') + ' MB' : (liveMode ? 'Uploaded after confirmation' : 'Stays on this device in demo mode') }}</small>
             </label>
             <div *ngIf="fileError" class="error-text" role="alert">{{ fileError }}</div>
 
@@ -59,9 +59,10 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
               <div><dt>Start date</dt><dd>{{ preferences.startDate || 'Not specified' }}</dd></div>
               <div *ngIf="preferences.additionalRequirements"><dt>Requirements</dt><dd>{{ preferences.additionalRequirements }}</dd></div>
             </dl>
-            <div class="form-actions"><button class="button primary" type="button" (click)="runAnalysis()" [disabled]="busy">{{ busy ? 'Loading results' : 'Get results' }}</button></div>
+            <label *ngIf="liveMode" class="privacy-consent"><input type="checkbox" [(ngModel)]="privacyAcknowledged" name="privacyAcknowledged"><span>This sends CV text to Azure AI Foundry. GetProspect searches companies and contacts and may enrich up to five emails. CV text is temporary; email drafts are not sent.</span></label>
+            <div class="form-actions"><button class="button primary" type="button" (click)="runAnalysis()" [disabled]="busy || (liveMode && !privacyAcknowledged)">{{ busy ? 'Waiting for results' : 'Get results' }}</button></div>
           </div>
-          <div *ngIf="busy" class="loading" role="status">Loading demo results…</div>
+          <div *ngIf="busy" class="loading" role="status">{{ environmentMode ? 'Loading demo results…' : 'Waiting for workflow results…' }}</div>
           <div *ngIf="error" class="error-panel" role="alert">{{ error }}</div>
         </section>
 
@@ -145,10 +146,27 @@ export class AppComponent {
   reviewed = new Set<number>();
   preferences: Preferences = { countryCodes: [], targetRoles: [], internshipDuration: '6 months', startDate: '', additionalRequirements: '' };
 
-  readonly environmentMode = environment.mode === 'demo';
-  readonly fitLabel = environment.mode === 'demo' ? 'DEMO FIT' : 'FIT SCORE';
+  liveMode = false;
+  privacyAcknowledged = false;
 
-  constructor(private readonly demo: DemoDataService, private readonly api: CareerSignalApiService) {}
+  get environmentMode(): boolean { return !this.liveMode; }
+  get fitLabel(): string { return this.liveMode ? 'FIT SCORE' : 'DEMO FIT'; }
+
+  constructor(private readonly demo: DemoDataService, private readonly api: CareerSignalApiService) {
+    this.liveMode = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('careersignal-live-mode') === 'true';
+  }
+
+  toggleMode(): void {
+    if (this.liveMode) {
+      this.liveMode = false;
+      this.privacyAcknowledged = false;
+      sessionStorage.removeItem('careersignal-live-mode');
+      return;
+    }
+    this.privacyAcknowledged = false;
+    sessionStorage.setItem('careersignal-live-mode', 'true');
+    window.location.assign('/api/access-login');
+  }
 
   get roleList(): string[] { return this.rolesText.split(',').map(value => value.trim()).filter(Boolean); }
   get countryList(): string[] { return this.selectedCountries.map(country => country.name); }
@@ -199,10 +217,11 @@ export class AppComponent {
     this.reviewing = true;
   }
   async runAnalysis(): Promise<void> {
+    if (this.liveMode && !this.privacyAcknowledged) return;
     this.busy = true;
     this.error = '';
     try {
-      this.result = environment.mode === 'demo' ? await this.demo.run('Fictional demonstration profile', this.preferences) : await this.api.run(this.file!, this.preferences);
+      this.result = this.liveMode ? await this.api.run(this.file!, this.preferences) : await this.demo.run('Fictional demonstration profile', this.preferences);
       this.reviewIndex = 0;
       this.keptContacts.clear();
       this.skippedContacts = 0;
@@ -249,7 +268,7 @@ export class AppComponent {
   private showToast(message: string): void { this.toast = message; setTimeout(() => this.toast = '', 2500); }
   markReviewed(index: number): void { this.reviewed.add(index); this.reviewed = new Set(this.reviewed); }
   reset(): void {
-    this.result = null; this.view = 'contacts'; this.reviewing = false; this.file = null; this.fileError = ''; this.reviewed.clear(); this.error = ''; this.selectedCountries = []; this.countrySearch = ''; this.preferences.countryCodes = [];
+    this.result = null; this.view = 'contacts'; this.reviewing = false; this.file = null; this.fileError = ''; this.reviewed.clear(); this.error = ''; this.selectedCountries = []; this.countrySearch = ''; this.preferences.countryCodes = []; this.privacyAcknowledged = false;
     this.reviewIndex = 0; this.keptContacts.clear(); this.skippedContacts = 0; this.revealedDraft = null;
   }
 }

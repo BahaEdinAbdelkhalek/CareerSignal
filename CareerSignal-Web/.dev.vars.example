@@ -1,0 +1,6 @@
+CAREERSIGNAL_FUNCTION_APP_URL="https://<function-app>.azurewebsites.net"
+CAREERSIGNAL_FUNCTION_KEY="replace-with-the-rotated-function-key"
+ACCESS_ISSUER="https://<team-name>.cloudflareaccess.com"
+ACCESS_AUD="<cloudflare-access-application-audience>"
+CAREERSIGNAL_ALLOWED_EMAIL="<your-authorized-email>"
+CAREERSIGNAL_STATUS_ENCRYPTION_KEY="<64-hex-character-random-key>"

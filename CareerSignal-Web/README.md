@@ -20,7 +20,7 @@ Backend contract verified against the backend in this repository, branch `main`.
 - Durable failure states include `Failed`, `Terminated`, and `Canceled`. The management URLs are credentials and must not be logged or exposed.
 - Backend currently has no user sign-in, per-user ownership, or authorization binding for a workflow ID. Its Function key must never be embedded in Angular or exposed to unauthenticated visitors.
 
-**Live integration is intentionally disabled.** `CareerSignalApiService` describes the observed submit/poll response contract, but no browser API key is supported. It needs a trusted authenticated server-side gateway that validates user identity, applies ownership and rate limits, keeps Function credentials private, and safely proxies Durable polling/deletion before public live use. The Angular live mode checks are not a substitute for that gateway.
+The live adapter calls the same-origin Cloudflare Worker gateway, not Azure directly. The Worker validates a Cloudflare Access JWT and allowlisted email, enforces a submission rate limit, keeps the Function key server-side, and encrypts the Durable status URL into an owner-bound handle. Live requests remain unavailable until the Access application and Worker variables/secrets are configured. The backend has no general user accounts or per-user ownership, so live use is limited to the configured operator.
 
 ## Local development
 
@@ -33,7 +33,7 @@ npm start
 
 Open the local URL printed by Angular CLI. Default mode is demo in `src/environments/environment.ts`. Demo mode uses fictional sample results and never calls the backend or GetProspect. The current PDF interaction checks extension, MIME type and 10 MB limit locally; it does not upload or parse the selected file in demo mode.
 
-To connect live data later, implement a secure gateway, update the typed adapter to its authenticated contract, and review privacy/retention policy. Do not set a Function key in Angular environment files. The current build-time mode is set in `src/environments/environment.ts`; `.env.example` documents intended deployment values, but Angular does not load `.env` files automatically.
+Live search uses the Worker gateway and requires Cloudflare Access plus its production variables and secrets. The Azure Function key is never part of Angular configuration. The app defaults to demo mode; choose **Live** to authenticate before uploading a CV. Keep live access restricted to the configured operator until user ownership and deletion controls are added.
 
 ## Build and checks
 
@@ -43,16 +43,38 @@ npm run build
 
 The app builds to `dist/careersignal/browser`. Interactive demo covers profile preference review, result sorting, profile signals, editable email drafts, copy actions, reviewed state, reset, input errors, and waiting/error UI. For real browser automation, add Playwright or another test runner and configure it against a local server before release.
 
-## Deploy to Azure Static Web Apps Free
+## Azure Container Apps deployment
 
-1. Push this monorepo to GitHub and make sure the Angular workflow is at `.github/workflows/azure-static-web-apps.yml` in the repository root.
-2. In Azure Portal, create a **Static Web App**, select the **Free** plan, and connect this repository and the `main` branch. No Azure resources are created by this project.
-3. The workflow installs and builds from `CareerSignal-Web`, then publishes `CareerSignal-Web/dist/careersignal/browser`. Keep the workflow's app location and output location aligned with those paths.
-4. Add the generated deployment token to the repository's Actions secrets as `AZURE_STATIC_WEB_APPS_API_TOKEN`. The workflow uses that secret.
-5. Push a commit to `main` and confirm the **Deploy CareerSignal to Azure Static Web Apps** workflow succeeds in GitHub Actions.
-6. Keep the published site in demo mode. Do not enable live API access until an authenticated server-side gateway, user authorization, rate limiting, CV retention/deletion controls, privacy notice, and security review exist.
+The single-container deployment serves the Angular production build and the same-origin Node gateway from one Azure Container App. The gateway calls the existing Azure Functions workflow; the Azure Function key is supplied as a Container Apps secret and is never put in Angular configuration.
 
-`staticwebapp.config.json` configures SPA fallback and baseline security headers. The Content Security Policy currently allows Google Fonts. Remove that external font allowance if self-hosting fonts.
+See [`../docs/azure-container-apps.md`](../docs/azure-container-apps.md) for the GitHub image build and step-by-step Azure Portal setup. The container listens on port `8080`. Live mode requires the Container App's Entra authentication provider and a single allowlisted email. Keep Demo mode as the public default.
+
+Build and run the container locally after building Angular:
+
+```sh
+npm ci
+npm test
+npm run build
+docker build -t careersignal-web .
+docker run --rm -p 8080:8080 careersignal-web
+```
+
+## Cloudflare Worker deployment alternative
+
+The Angular app can also be hosted as static assets by the `careersignal` Cloudflare Worker. Its source is this folder's `worker.mjs`; `wrangler.jsonc` points the Worker at the Angular production output. Follow [`../docs/cloudflare-worker-gateway.md`](../docs/cloudflare-worker-gateway.md) only if you choose Cloudflare instead of the Azure Container Apps deployment.
+
+Cloudflare Git build settings:
+
+- Repository: `BahaEdinAbdelkhalek/CareerSignal`
+- Production branch: `main`
+- Root directory: `CareerSignal-Web`
+- Build command: `npm test && npm run build`
+- Deploy command: `npx wrangler deploy`
+- Static output: `dist/careersignal/browser`
+
+The Worker applies security headers, serves Angular route fallbacks, and provides a same-origin gateway at `/api/searches`. Configure Cloudflare Access and the Worker secrets before using Live mode. See [`../docs/cloudflare-worker-gateway.md`](../docs/cloudflare-worker-gateway.md) for the complete setup. Demo mode remains the default and does not call Azure or GetProspect.
+
+For local Worker route tests, run `npm test`. To preview the Worker locally, copy `.dev.vars.example` to `.dev.vars`, fill local values, run `npm run build`, then `npm run preview`. Never commit `.dev.vars`.
 
 ## Product limits
 

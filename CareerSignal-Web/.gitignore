@@ -3,3 +3,6 @@ dist/
 .angular/
 dev-server.log
 .env
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

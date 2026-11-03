@@ -5,6 +5,14 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'src/**'
+      - 'test/**'
+      - 'scripts/**'
+      - 'host.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/main_hr-function.yml'
   workflow_dispatch:
 
 env:

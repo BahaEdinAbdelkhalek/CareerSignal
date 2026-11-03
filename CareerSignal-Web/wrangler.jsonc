@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "careersignal",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-11-03",
+  "assets": {
+    "directory": "./dist/careersignal/browser",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "ratelimits": [
+    {
+      "name": "SEARCH_SUBMIT_LIMITER",
+      "namespace_id": "6419207",
+      "simple": {
+        "limit": 3,
+        "period": 60
+      }
+    }
+  ]
+}

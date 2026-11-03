@@ -4,20 +4,19 @@
 
 Keep the Angular UI static and the existing workflow serverless. Do not move this workload to AKS or host the Angular site inside the Function App.
 
-- **Public demonstration:** Azure Static Web Apps Free, with demo mode enabled and no backend access.
-- **Authenticated product:** Keep Static Web Apps as the frontend host. Use the existing Azure Functions Flex Consumption app for the workflow, Durable Task Scheduler for orchestration, Blob Storage for temporary CV text, and Key Vault for provider credentials. Add an authenticated API facade before enabling live requests.
-- **Do not deploy or expose live CV processing yet.** The current Function API is Function-key protected only and has no sign-in, user ownership, or per-user authorization. A browser must never receive the Function key or Durable management URLs.
+- **Single application host:** One Azure Container App serves the Angular frontend and a same-origin Node.js gateway. The gateway proxies authorized live requests to the existing Azure Functions workflow.
+- **Public demonstration and restricted live workflow:** The Angular demo remains publicly accessible with fictional data. Azure Container Apps built-in Microsoft Entra authentication supplies the identity for live requests, which the gateway restricts to one allowlisted email. Durable Task Scheduler, Blob Storage, Key Vault, Azure AI Foundry, and GetProspect remain on Azure.
+- **Public multi-user processing is not enabled.** The Azure API itself uses Function-key authorization and has no general user accounts or ownership mapping. The Worker currently restricts live requests to one allowlisted Access identity; never expose the Function key or Durable management URLs to the browser.
 
-This is the lowest-change fit for the current product. The workflow already uses Azure Functions v4, Node.js 24, Flex Consumption in its GitHub Actions workflow, Azure-managed Durable Task Scheduler, Blob Storage, Key Vault, Azure AI Foundry, and GetProspect.
+This keeps the existing Azure workflow and places the frontend and gateway together in the Container App. Azure Static Web Apps creation was blocked by the subscription's region-eligibility policy; the Container Apps region must still be checked for availability and cost.
 
 ## Current workflow and host boundaries
 
 ```mermaid
 flowchart TD
     Candidate[Candidate browser]
-    Static[Azure Static Web Apps]
-    Identity[Microsoft Entra External ID]
-    Facade[Authenticated API facade]
+    App[Azure Container App: Angular and Node gateway]
+    Identity[Container Apps authentication: Entra ID]
     Functions[Azure Functions Flex Consumption]
     Durable[Durable Task Scheduler]
     Blob[Private Blob Storage]
@@ -25,10 +24,10 @@ flowchart TD
     Foundry[Azure AI Foundry]
     Prospect[GetProspect]
 
-    Candidate --> Static
+    Candidate --> App
     Candidate --> Identity
-    Static --> Facade
-    Facade --> Functions
+    Identity --> App
+    App --> Functions
     Functions --> Durable
     Functions --> Blob
     Functions --> Vault
@@ -36,29 +35,26 @@ flowchart TD
     Functions --> Prospect
 ```
 
-The arrows show request/data flow. The candidate browser talks to the authenticated facade, not directly to Function-level endpoints or Durable management URLs. The existing orchestration owns company discovery, contact selection, enrichment, and draft generation.
+The browser talks to the Container App. Its Node gateway checks the authenticated Entra principal and the single-email allowlist, then sends Azure requests with `x-functions-key` set server-side. The gateway encrypts the Durable status URL into a short-lived, owner-bound handle and polls it server-side. The browser never receives the Azure key or raw management URL. The existing orchestration owns company discovery, contact selection, enrichment, and draft generation.
 
-## Important security work before live use
+## Additional security work before public multi-user use
 
-Add an authenticated facade, either as routes in the current Function App or as a small separate Function App if deployment isolation is needed. Do not expose the existing Function management API directly.
+The current gateway is a restricted single-operator integration, not a general account system. Before allowing other candidates to process CVs:
 
-The facade must:
+1. Replace the single-email allowlist with a supported user identity flow and enforce authorization for every search.
+2. Persist user-to-search ownership and retention records server-side. The current short-lived encrypted handle is suitable only for the restricted test workflow.
+3. Add reliable per-user/global abuse limits and controls for GetProspect credit consumption. The current Cloudflare rate-limit binding is approximate and location-scoped.
+4. Provide consent, privacy disclosure, and user-facing deletion for CV-derived results and orchestration history.
+5. Keep Function ingress limited to the gateway where feasible, retain Key Vault and Blob least-privilege access, and scrub CVs, email addresses, drafts, keys, and Durable URLs from telemetry.
 
-1. Validate Microsoft Entra External ID access tokens and derive the user identity from verified claims.
-2. Start a search for the authenticated user and persist the relationship between user ID and orchestration ID.
-3. Provide a stable user-facing status route such as `GET /searches/{id}`. Check ownership on every read, cancel, or delete request.
-4. Poll Durable Functions server-side. Keep the Durable `statusQueryGetUri` and Function credentials on the server; never return them to Angular, logs, analytics, or error messages.
-5. Enforce per-user rate limits, upload/request limits, consent, and deletion behavior.
-6. Return only the typed analysis, company, contact, and draft data the user is authorized to see.
-
-Use exact-origin CORS for the production frontend domain. Keep the Function App restricted to the facade where feasible. Put any Function credential required between the facade and current workflow in Key Vault or secure Function settings, accessed through managed identity. Never put it in Angular environment files.
+The frontend and gateway use the same origin, so browser-to-gateway CORS is not needed. Never put Function credentials or Durable management URLs in Angular environment files.
 
 ## Azure services and responsibilities
 
 | Part | Hosting | Notes |
 |---|---|---|
-| Angular frontend | Azure Static Web Apps | Free plan for the public demo. Keep `CAREERSIGNAL_MODE=demo` in the build. For authenticated production, use a plan that supports the chosen production authentication and deployment requirements; confirm current feature availability before selection. |
-| Authenticated API facade | Azure Functions | Validates user identity, enforces ownership, hides Durable management URLs, and proxies status/results. Reuse the current Function App initially to reduce services, unless a separate security/deployment boundary justifies another app. |
+| Angular frontend and gateway | Azure Container App | One image serves `CareerSignal-Web/dist/careersignal/browser` and same-origin `/api/*` routes on port 8080. Keep demo mode public; configure Entra authentication and Container Apps secrets before live testing. |
+| Authenticated API gateway | Node.js server in Container App | Checks the platform-authenticated Entra principal and single-operator allowlist, adds the Function key server-side, limits submissions per running process, and proxies Durable status/results without exposing management URLs. |
 | CareerSignal workflow | Existing Azure Functions Flex Consumption | Continue using Node.js 24 and Functions programming model v4. Flex Consumption is already selected by the backend deployment workflow. |
 | Orchestration | Azure Durable Task Scheduler | Keep the existing Azure-managed provider configuration. Treat scheduler history as sensitive candidate data and verify retention settings. |
 | Temporary CV text | Private Azure Blob Storage | Use managed identity and least-privilege RBAC. Keep the existing deletion-after-analysis behavior, orphan cleanup timer, and configure storage lifecycle as a secondary safeguard. |
@@ -72,28 +68,28 @@ Avoid AKS, a custom VM, and a database just for the current demo. Add a database
 
 | Option | Fit | Trade-off |
 |---|---|---|
-| Static Web Apps Free + demo data | Best for portfolio/public demonstration | Lowest cost and operational work. No live CV processing. This is the current safe state. |
-| Static Web Apps + authenticated facade + existing Functions | Recommended production path | Keeps static delivery inexpensive and reuses the current serverless workflow. Requires authentication, ownership mapping, server-side status proxying, and secure ingress before release. |
-| App Service hosting Angular and a Node.js BFF | Plausible alternative | One web deployment can serve UI and BFF from one origin, reducing browser CORS work. Costs more than static hosting and adds a continuously managed web app; does not remove the need for user authorization in the workflow. |
-| Container Apps or AKS | Not recommended now | Adds container/platform operations without a current requirement for custom runtimes, sustained workloads, or independent service scaling. Revisit only when measured constraints justify it. |
+| Azure Container Apps | Chosen combined frontend and gateway host | One container serves Angular and the Node gateway. Check region availability, supporting-resource cost, and the Student subscription allowance before deployment. |
+| Cloudflare Worker + demo data | Alternative public demonstration host | Can serve the Angular assets and fictional demo data separately if Container Apps deployment is unavailable. |
+| Azure App Service | Alternative | Can also serve Angular and a Node.js gateway on one origin, but may cost more for an always-running web app. |
+| AKS | Not recommended | Adds cluster operations that are not needed for this product. |
 
 ## Deployment and environments
 
 Use separate development and production resource configurations. Do not share production CV storage, Durable Task Scheduler, Key Vault, or provider credentials with local/demo environments.
 
-- **Frontend:** The Angular app currently lives in `CareerSignal-Web` in the same repository as the backend. Its Static Web Apps workflow must live under the repository-root `.github/workflows/`, install/build from `CareerSignal-Web`, and publish `CareerSignal-Web/dist/careersignal/browser`. If you later split out a frontend repository, update those paths to match its root.
-- **Backend:** The existing workflow builds and tests the Function App, then deploys to `hr-function` using a publish-profile secret. Replace publish-profile authentication with GitHub Actions OIDC and Azure federated credentials before production use. Keep build/test and deploy stages separate, and deploy only from the protected main branch or an approved release.
-- **Secrets:** Store `AZURE_STATIC_WEB_APPS_API_TOKEN` in the frontend GitHub Actions environment for deployment only. It is not an Angular runtime secret. Use environment-scoped secrets and approvals for production deployments.
-- **Configuration:** Set demo/live mode at build or server-side configuration, not from a user-editable browser storage value. The production public demo must remain demo-only until the facade and security controls are deployed.
-- **Custom domains:** Use a frontend domain such as `app.example.com` and an API domain such as `api.example.com`, or route both through one gateway. Configure TLS and exact-origin CORS.
+- **Frontend and gateway:** `CareerSignal-Web/Dockerfile` builds Angular and packages the static app with `server.mjs` and `worker.mjs`. GitHub Actions tests and publishes the image to GHCR; deploy it to Container Apps on port 8080.
+- **Backend:** The existing workflow builds and tests the Function App, then deploys to `hr-function` using a publish-profile secret. It runs only for backend paths or manual dispatch, so frontend changes do not redeploy Azure Functions. Replace publish-profile authentication with GitHub Actions OIDC and Azure federated credentials before production use.
+- **Secrets:** Azure provider secrets remain in Key Vault. The Azure Function key and status-encryption key live only as Container Apps secrets. None belong in Angular or GitHub source.
+- **Configuration:** The public app defaults to demo. Live mode requires Entra authentication and a single-operator allowlist. This is not a substitute for a public identity and ownership system.
+- **Custom domains:** A single Container App origin serves the app and `/api/*`, so browser requests are same-origin and do not need CORS. Use the Container Apps HTTPS ingress.
 
 ## Rollout plan
 
-1. **Demo hosting:** Push the frontend as its own GitHub repository. Create Azure Static Web Apps Free in the Azure Portal and add its deployment token as a GitHub Actions secret. Verify the deployed build remains in demo mode and never calls the backend.
-2. **Identity and facade:** Select the identity model, implement sign-in, user-to-search ownership, authenticated status/results/deletion routes, and rate limits. Do not forward Durable management URLs to the browser.
-3. **Private backend path:** Configure Function App ingress, managed identity, Key Vault and Blob RBAC, request-size limit, CORS, and provider egress. Use a non-production resource group and test the complete workflow with fictitious CV data.
-4. **Operations:** Configure retention, data deletion tests, dependency alerts, structured PII-safe telemetry, error alerts, and rollback. Verify provider terms and candidate privacy disclosures before handling real CVs.
-5. **Enable live frontend:** Add the authenticated gateway URL to frontend deployment configuration only after end-to-end security and ownership tests pass. Never add Function keys to Angular.
+1. **Container build:** GitHub Actions tests and publishes the Angular-plus-gateway image to GHCR. Deploy the image to the permitted Container Apps region and verify the demo does not call Azure or GetProspect.
+2. **Restricted live test:** Configure Container Apps Entra authentication, set the Function and encryption secrets, and verify the gateway identity check, owner-bound handle, and failure handling. Do not forward Durable management URLs to the browser.
+3. **Public identity and ownership:** Before opening live search to other users, add a production identity flow, durable user-to-search ownership and retention records, per-user deletion, and stronger abuse controls. The current single-operator gateway is not sufficient for multi-user access.
+4. **Private backend path:** Configure Function App ingress, managed identity, Key Vault and Blob RBAC, and request-size limits. Test the complete workflow with fictitious CV data.
+5. **Operations:** Configure retention, data deletion tests, dependency alerts, structured PII-safe telemetry, error alerts, and rollback. Verify provider terms and candidate privacy disclosures before handling real CVs.
 
 ## Release checks
 
@@ -110,4 +106,4 @@ Before enabling live traffic, verify:
 
 ## Decision
 
-Keep the current static-frontend/serverless-workflow structure. Use Static Web Apps Free for the public demo and retain Flex Consumption plus Durable Task Scheduler for the backend. Add identity and an owner-aware API facade before any public live processing. Revisit the hosting plan if measured traffic, identity requirements, networking controls, or operational targets exceed these services' capabilities.
+Use one Azure Container App for the Angular frontend and Node gateway, with the existing Azure Functions/Durable Task Scheduler workflow unchanged. The public site defaults to fictional demo data; live searches are restricted to one Entra identity. Add general user identity, durable ownership, retention, and deletion controls before opening live processing to other users.

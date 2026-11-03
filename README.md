@@ -17,7 +17,7 @@
 
 CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares an individual outreach draft for each selected contact.
 
-It focuses on **contact discovery and outreach preparation**. It does not discover vacancies, verify that a company is hiring, or send email. Public frontend demo data is fictional; live browser access remains disabled until a secure authenticated API gateway is available.
+It focuses on **contact discovery and outreach preparation**. It does not discover vacancies, verify that a company is hiring, or send email. Public frontend demo data is fictional; live searches are available only to the single Cloudflare Access identity configured for the restricted gateway.
 
 ## What the workflow does
 
@@ -150,11 +150,11 @@ npm start
 
 Build it for production with `npm run build`. The output is `CareerSignal-Web/dist/careersignal/browser`.
 
-The live Angular adapter reflects the observed backend submit/status/result contract, but live mode is intentionally disabled. The backend currently uses Function-key authorization and does not provide user sign-in or per-user ownership. Do not put a Function key or Durable management URL in the browser. Before enabling live CV processing, add the authenticated, owner-aware server-side API facade described in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+The Angular app defaults to fictional demo data. A Live mode is available through the Cloudflare Access-protected Worker gateway. The gateway sends the Azure Function key only from the server, keeps Durable status URLs out of the browser, and allows the configured operator only. The backend still has no general user accounts or per-user ownership, so live processing is not open to public users. See [`docs/cloudflare-worker-gateway.md`](docs/cloudflare-worker-gateway.md) before enabling real CVs.
 
 ## Frontend hosting
 
-Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The Angular app is in `CareerSignal-Web`; its deploy workflow is in the repository-root `.github/workflows/azure-static-web-apps.yml` and builds from that subdirectory to `CareerSignal-Web/dist/careersignal/browser`. Connect the main GitHub repository and branch in Azure, then add the generated deployment token as the `AZURE_STATIC_WEB_APPS_API_TOKEN` GitHub Actions secret. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+The public demo and same-origin API gateway run on the `careersignal` Cloudflare Worker. Its Git-connected build uses `CareerSignal-Web` as the root directory, `npm test && npm run build` as the build command, and `npx wrangler deploy` to deploy the Worker and `dist/careersignal/browser` static assets. The existing Azure Static Web Apps workflow was removed because the Azure subscription rejected all regions. The backend remains on Azure Functions. See [`docs/cloudflare-worker-gateway.md`](docs/cloudflare-worker-gateway.md) for Access and secret configuration.
 
 ## Backend deployment
 

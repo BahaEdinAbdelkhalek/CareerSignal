@@ -1,0 +1,10 @@
+node_modules
+.angular
+dist
+.git
+.github
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+*.log
