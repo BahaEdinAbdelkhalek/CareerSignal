@@ -45,11 +45,11 @@ The app builds to `dist/careersignal/browser`. Interactive demo covers profile p
 
 ## Deploy to Azure Static Web Apps Free
 
-1. Push this folder as the `CareerSignal` web repository to GitHub.
-2. In Azure Portal, create a **Static Web App**, select the **Free** plan, and connect the repository and `main` branch. No Azure resources are created by this project.
-3. Set build preset to **Custom** if prompted. Use app location `/`, API location blank, and output location `dist/careersignal/browser`.
-4. Add the generated deployment token to the repository's Actions secrets as `AZURE_STATIC_WEB_APPS_API_TOKEN`. The included workflow uses that secret.
-5. Ensure the successful build uses Node 24 and `npm ci && npm run build`. Review the Actions workflow before merge.
+1. Push this monorepo to GitHub and make sure the Angular workflow is at `.github/workflows/azure-static-web-apps.yml` in the repository root.
+2. In Azure Portal, create a **Static Web App**, select the **Free** plan, and connect this repository and the `main` branch. No Azure resources are created by this project.
+3. The workflow installs and builds from `CareerSignal-Web`, then publishes `CareerSignal-Web/dist/careersignal/browser`. Keep the workflow's app location and output location aligned with those paths.
+4. Add the generated deployment token to the repository's Actions secrets as `AZURE_STATIC_WEB_APPS_API_TOKEN`. The workflow uses that secret.
+5. Push a commit to `main` and confirm the **Deploy CareerSignal to Azure Static Web Apps** workflow succeeds in GitHub Actions.
 6. Keep the published site in demo mode. Do not enable live API access until an authenticated server-side gateway, user authorization, rate limiting, CV retention/deletion controls, privacy notice, and security review exist.
 
 `staticwebapp.config.json` configures SPA fallback and baseline security headers. The Content Security Policy currently allows Google Fonts. Remove that external font allowance if self-hosting fonts.

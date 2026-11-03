@@ -154,7 +154,7 @@ The live Angular adapter reflects the observed backend submit/status/result cont
 
 ## Frontend hosting
 
-Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The frontend's deployment workflow and project configuration live under `CareerSignal-Web`; the current workflow expects the Angular app to be the repository root. If deploying this monorepo, configure the workflow's app location and npm working directory for `CareerSignal-Web`, and use `dist/careersignal/browser` as the output location. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The Angular app is in `CareerSignal-Web`; its deploy workflow is in the repository-root `.github/workflows/azure-static-web-apps.yml` and builds from that subdirectory to `CareerSignal-Web/dist/careersignal/browser`. Connect the main GitHub repository and branch in Azure, then add the generated deployment token as the `AZURE_STATIC_WEB_APPS_API_TOKEN` GitHub Actions secret. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
 
 ## Backend deployment
 
