@@ -2,7 +2,7 @@
 
 ## CareerSignal
 
-<img src="CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png" alt="CareerSignal" width="100%" height="600" />
+![CareerSignal cover](CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png)
 
 CareerSignal turns a candidate's CV and search preferences into a short, explainable list of relevant companies and HR / Talent Acquisition contacts, then prepares individual outreach email drafts.
 
