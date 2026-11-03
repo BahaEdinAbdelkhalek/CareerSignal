@@ -1,4 +1,8 @@
-# CareerSignal
+# IntrenshipSearchHelp
+
+## CareerSignal
+
+<img src="CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png" alt="CareerSignal" width="100%" height="600" />
 
 CareerSignal turns a candidate's CV and search preferences into a short, explainable list of relevant companies and HR / Talent Acquisition contacts, then prepares individual outreach email drafts.
 
@@ -121,7 +125,27 @@ Provide local values through `local.settings.json` (never commit it). The automa
 - The 10 MB PDF size is validated by the function after multipart parsing. On Flex Consumption, `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT` is not used; enforce an ingress-level request cap with an API gateway or equivalent before exposing this endpoint publicly.
 - A heuristic match is not evidence of a live vacancy. Verify the company, recipient's current position, email validity and internship availability before contacting anyone.
 
-## Deployment
+## Frontend
+
+The Angular application is in [`CareerSignal-Web/`](CareerSignal-Web/README.md). It provides a public product page and candidate workspace with CV selection, preference review, discovery results, and editable outreach drafts. Demo mode is enabled by default and uses fictional data only; it never calls the backend or GetProspect. The PDF selection in demo mode validates the file locally but does not upload or parse it.
+
+Run the frontend locally (Node.js 24+ and npm):
+
+```sh
+cd CareerSignal-Web
+npm ci
+npm start
+```
+
+Build it for production with `npm run build`. The output is `CareerSignal-Web/dist/intrenshipsearchhelp/browser`.
+
+The live Angular adapter reflects the observed backend submit/status/result contract, but live mode is intentionally disabled. The backend currently uses Function-key authorization and does not provide user sign-in or per-user ownership. Do not put a Function key or Durable management URL in the browser. Before enabling live CV processing, add the authenticated, owner-aware server-side API facade described in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+
+## Frontend hosting
+
+Azure Static Web Apps Free is the recommended host for the public, demo-only frontend. The frontend's deployment workflow and project configuration live under `CareerSignal-Web`; the current workflow expects the Angular app to be the repository root. If deploying this monorepo, configure the workflow's app location and npm working directory for `CareerSignal-Web`, and use `dist/intrenshipsearchhelp/browser` as the output location. Keep the deployed site in demo mode until the secure API facade and access controls are in place. Step-by-step architecture and rollout guidance is in [`docs/azure-hosting.md`](docs/azure-hosting.md).
+
+## Backend deployment
 
 GitHub Actions runs `npm ci`, syntax checks and unit tests before packaging the Node.js application for the `hr-function` Azure Function App. Deployment still requires the existing publish-profile secret in the GitHub repository.
 
