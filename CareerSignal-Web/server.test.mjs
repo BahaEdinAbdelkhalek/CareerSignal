@@ -8,7 +8,8 @@ import { createCareerSignalServer } from './server.mjs';
 
 test('container serves the SPA and rejects unauthenticated gateway calls', async () => {
   const assetDirectory = await mkdtemp(join(tmpdir(), 'careersignal-assets-'));
-  await writeFile(join(assetDirectory, 'index.html'), '<app-root>test</app-root>');
+  await writeFile(join(assetDirectory, 'index.html'), '<link rel="stylesheet" href="styles-test.css"><app-root>test</app-root>');
+  await writeFile(join(assetDirectory, 'styles-test.css'), 'body { color: green; }');
   const server = createCareerSignalServer({
     assetDirectory,
     env: { CAREERSIGNAL_AUTH_PROVIDER: 'azure', CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com' },
@@ -22,7 +23,14 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
     const page = await fetch(baseUrl);
     assert.equal(page.status, 200);
     assert.match(page.headers.get('content-security-policy'), /frame-ancestors 'none'/);
-    assert.match(await page.text(), /<app-root/);
+    const html = await page.text();
+    assert.match(html, /<app-root/);
+    assert.match(html, /rel="stylesheet"/);
+
+    const stylesheet = await fetch(`${baseUrl}/styles-test.css`);
+    assert.equal(stylesheet.status, 200);
+    assert.ok(stylesheet.headers.get('content-type').startsWith('text/css'));
+    assert.equal(await stylesheet.text(), 'body { color: green; }');
 
     const unauthorized = await fetch(`${baseUrl}/api/searches`, {
       method: 'POST',
