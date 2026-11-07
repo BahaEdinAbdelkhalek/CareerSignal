@@ -4,7 +4,7 @@ name: Build and deploy CareerSignal Azure Function App
 on:
   push:
     branches:
-      - main
+      - azure
     paths:
       - 'src/**'
       - 'test/**'
@@ -51,6 +51,7 @@ jobs:
           if-no-files-found: error
 
   deploy:
+    if: github.ref_name == 'azure'
     runs-on: ubuntu-latest
     needs: build
     steps:

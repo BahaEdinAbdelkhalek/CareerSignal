@@ -2,7 +2,7 @@ name: Build CareerSignal container
 
 on:
   push:
-    branches: [main]
+    branches: [azure]
     paths:
       - 'CareerSignal-Web/**'
       - '.github/workflows/careersignal-container.yml'
@@ -14,6 +14,7 @@ permissions:
 
 jobs:
   build-and-push:
+    if: github.ref_name == 'azure'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository

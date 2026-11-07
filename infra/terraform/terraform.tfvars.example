@@ -1,0 +1,19 @@
+# This example does not enable deployment. Copy to terraform.tfvars and fill values locally.
+deploy_enabled      = false
+subscription_id     = ""
+resource_group_name = "rg-hr-project"
+location            = "Spain Central"
+container_app_name  = "careersignal-web-iac"
+environment_name    = "careersignal-env-iac"
+image               = "ghcr.io/bahaedinabdelkhalek/careersignal-web:sha-1b66cc2"
+
+# Fill these only in an untracked local terraform.tfvars file.
+public_origin         = ""
+entra_tenant_id       = ""
+entra_client_id       = ""
+entra_client_secret   = ""
+allowed_email         = ""
+function_app_url      = "https://hr-function-brercabzfnf2d7gj.spaincentral-01.azurewebsites.net"
+function_key          = ""
+status_encryption_key = ""
+session_encryption_key = ""

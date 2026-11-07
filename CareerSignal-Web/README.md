@@ -33,7 +33,7 @@ npm start
 
 Open the local URL printed by Angular CLI. Default mode is demo in `src/environments/environment.ts`. Demo mode uses fictional sample results and never calls the backend or GetProspect. The current PDF interaction checks extension, MIME type and 10 MB limit locally; it does not upload or parse the selected file in demo mode.
 
-Live search uses the Worker gateway and requires Cloudflare Access plus its production variables and secrets. The Azure Function key is never part of Angular configuration. The app defaults to demo mode; choose **Live** to authenticate before uploading a CV. Keep live access restricted to the configured operator until user ownership and deletion controls are added.
+Live search uses the same-origin Node gateway in the Azure Container App and Microsoft Entra sign-in. The gateway requires its server-side Entra, Azure Function, session, and status-encryption settings; none of these secrets are included in Angular. The app defaults to demo mode; choose **Live** to sign in before uploading a CV. Keep live access restricted to the configured operator until user ownership and deletion controls are added.
 
 ## Build and checks
 
@@ -66,13 +66,13 @@ The Angular app can also be hosted as static assets by the `careersignal` Cloudf
 Cloudflare Git build settings:
 
 - Repository: `BahaEdinAbdelkhalek/CareerSignal`
-- Production branch: `main`
+- Production branch: `azure`
 - Root directory: `CareerSignal-Web`
 - Build command: `npm test && npm run build`
 - Deploy command: `npx wrangler deploy`
 - Static output: `dist/careersignal/browser`
 
-The Worker applies security headers, serves Angular route fallbacks, and provides a same-origin gateway at `/api/searches`. Configure Cloudflare Access and the Worker secrets before using Live mode. See [`../docs/cloudflare-worker-gateway.md`](../docs/cloudflare-worker-gateway.md) for the complete setup. Demo mode remains the default and does not call Azure or GetProspect.
+The container server applies security headers, serves Angular route fallbacks, and provides same-origin sign-in and gateway routes. For the active Azure Container Apps deployment, see [`../docs/azure-container-apps.md`](../docs/azure-container-apps.md). Demo mode remains the default and does not call Azure or GetProspect.
 
 For local Worker route tests, run `npm test`. To preview the Worker locally, copy `.dev.vars.example` to `.dev.vars`, fill local values, run `npm run build`, then `npm run preview`. Never commit `.dev.vars`.
 

@@ -3,6 +3,7 @@ import { readFile, stat } from 'node:fs/promises';
 import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import worker from './worker.mjs';
+import { beginMicrosoftLogin, clientPrincipalHeader, completeMicrosoftLogin, readMicrosoftSession } from './entra-auth.mjs';
 
 const MAX_REQUEST_BYTES = 11 * 1024 * 1024;
 const WINDOW_MS = 60_000;
@@ -35,6 +36,20 @@ function limitForUser(userId) {
   if (current.count >= SUBMISSION_LIMIT) return { success: false };
   current.count += 1;
   return { success: true };
+}
+
+function nodeResponseHeaders(response) {
+  const headers = Object.fromEntries(response.headers.entries());
+  if (typeof response.headers.getSetCookie === 'function') {
+    const cookies = response.headers.getSetCookie();
+    if (cookies.length) headers['set-cookie'] = cookies;
+  }
+  return headers;
+}
+
+async function sendResponse(outgoing, response) {
+  outgoing.writeHead(response.status, nodeResponseHeaders(response));
+  outgoing.end(Buffer.from(await response.arrayBuffer()));
 }
 
 function secureStaticHeaders(headers) {
@@ -93,6 +108,7 @@ async function readRequestBody(request) {
 export function createCareerSignalServer({ env = process.env, assetDirectory = fileURLToPath(new URL('./dist/careersignal/browser', import.meta.url)) } = {}) {
   const gatewayEnv = {
     ...env,
+    CAREERSIGNAL_TRUSTED_SERVER_AUTH: env.CAREERSIGNAL_AUTH_PROVIDER === 'azure' ? 'true' : 'false',
     SEARCH_SUBMIT_LIMITER: { limit: ({ key }) => limitForUser(key) },
     ASSETS: { fetch: makeAssetFetcher(assetDirectory) },
   };
@@ -100,6 +116,21 @@ export function createCareerSignalServer({ env = process.env, assetDirectory = f
   return createServer(async (incoming, outgoing) => {
     try {
       const method = incoming.method || 'GET';
+      const pathname = new URL(incoming.url || '/', 'http://localhost').pathname;
+      if (pathname === '/api/access-login' && method === 'GET') {
+        const response = await beginMicrosoftLogin(env);
+        await sendResponse(outgoing, response);
+        return;
+      }
+      if (pathname === '/api/auth/callback' && method === 'GET') {
+        const forwardedHost = incoming.headers['x-forwarded-host'] || incoming.headers.host || 'localhost';
+        const forwardedProto = incoming.headers['x-forwarded-proto'];
+        const scheme = typeof forwardedProto === 'string' && forwardedProto.split(',')[0].trim() === 'https' ? 'https' : 'http';
+        const callbackRequest = new Request(new URL(incoming.url || '/', `${scheme}://${forwardedHost}`), { method, headers: incoming.headers });
+        const response = await completeMicrosoftLogin(callbackRequest, env);
+        await sendResponse(outgoing, response);
+        return;
+      }
       const hasBody = !['GET', 'HEAD'].includes(method);
       const body = hasBody ? await readRequestBody(incoming) : undefined;
       if (hasBody && body === null) {
@@ -117,14 +148,17 @@ export function createCareerSignalServer({ env = process.env, assetDirectory = f
         if (typeof value === 'string') headers.set(name, value);
         else if (Array.isArray(value)) headers.set(name, value.join(', '));
       }
+      headers.delete('x-ms-client-principal');
+      if (env.CAREERSIGNAL_AUTH_PROVIDER === 'azure' && requestUrl.pathname.startsWith('/api/')) {
+        const session = readMicrosoftSession(new Request(requestUrl, { method: 'GET', headers }), env);
+        if (session) headers.set('x-ms-client-principal', clientPrincipalHeader(session));
+      }
 
       const requestInit = { method, headers };
       if (hasBody) requestInit.body = body;
       const request = new Request(requestUrl, requestInit);
       const response = await worker.fetch(request, gatewayEnv);
-      const responseHeaders = new Headers(response.headers);
-      outgoing.writeHead(response.status, Object.fromEntries(responseHeaders.entries()));
-      outgoing.end(Buffer.from(await response.arrayBuffer()));
+      await sendResponse(outgoing, response);
     } catch (error) {
       console.error('Request handling failed:', error instanceof Error ? error.message : 'unknown error');
       if (!outgoing.headersSent) {

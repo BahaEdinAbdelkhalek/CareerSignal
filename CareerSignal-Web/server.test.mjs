@@ -10,14 +10,20 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
   const assetDirectory = await mkdtemp(join(tmpdir(), 'careersignal-assets-'));
   await writeFile(join(assetDirectory, 'index.html'), '<link rel="stylesheet" href="styles-test.css"><app-root>test</app-root>');
   await writeFile(join(assetDirectory, 'styles-test.css'), 'body { color: green; }');
-  const server = createCareerSignalServer({
-    assetDirectory,
-    env: { CAREERSIGNAL_AUTH_PROVIDER: 'azure', CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com' },
-  });
+  const authEnv = {
+    CAREERSIGNAL_AUTH_PROVIDER: 'azure',
+    CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com',
+    CAREERSIGNAL_ENTRA_TENANT_ID: 'tenant-id',
+    CAREERSIGNAL_ENTRA_CLIENT_ID: 'client-id',
+    CAREERSIGNAL_ENTRA_CLIENT_SECRET: 'test-secret',
+    CAREERSIGNAL_SESSION_ENCRYPTION_KEY: 'ab'.repeat(32),
+  };
+  const server = createCareerSignalServer({ assetDirectory, env: authEnv });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${address.port}`;
+  authEnv.CAREERSIGNAL_PUBLIC_ORIGIN = `https://careersignal.example`;
 
   try {
     const page = await fetch(baseUrl);
@@ -41,14 +47,20 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
 
     const login = await fetch(`${baseUrl}/api/access-login`, { redirect: 'manual' });
     assert.equal(login.status, 302);
-    assert.ok(login.headers.get('location').includes('/.auth/login/aad'));
+    const loginUrl = new URL(login.headers.get('location'));
+    assert.equal(loginUrl.origin, 'https://login.microsoftonline.com');
+    assert.equal(loginUrl.pathname, '/tenant-id/oauth2/v2.0/authorize');
+    assert.equal(loginUrl.searchParams.get('client_id'), 'client-id');
+    assert.equal(loginUrl.searchParams.get('redirect_uri'), 'https://careersignal.example/api/auth/callback');
+    assert.equal(loginUrl.searchParams.get('code_challenge_method'), 'S256');
+    assert.ok(login.headers.get('set-cookie').includes('HttpOnly'));
 
     const principal = Buffer.from(JSON.stringify({
       userId: 'operator-1',
       userDetails: 'operator@example.com',
       claims: [],
     })).toString('base64');
-    const authenticatedButUnconfigured = await fetch(`${baseUrl}/api/searches`, {
+    const forgedPrincipal = await fetch(`${baseUrl}/api/searches`, {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
@@ -57,7 +69,7 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
       },
       body: JSON.stringify({ cvText: 'fictional test', preferences: {} }),
     });
-    assert.equal(authenticatedButUnconfigured.status, 503);
+    assert.equal(forgedPrincipal.status, 401);
   } finally {
     server.close();
     await once(server, 'close');

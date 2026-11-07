@@ -10,9 +10,9 @@ Live access is restricted to the single email configured in `CAREERSIGNAL_ALLOWE
 
 ## 1. Build and publish the container image
 
-The GitHub Actions workflow at `.github/workflows/careersignal-container.yml` runs gateway tests, builds the Docker image, and publishes it to GitHub Container Registry (GHCR) after changes are pushed to `main`.
+The GitHub Actions workflow at `.github/workflows/careersignal-container.yml` runs gateway tests, builds the Docker image, and publishes it to GitHub Container Registry (GHCR) after changes are pushed to `azure`.
 
-1. Commit and push the project changes to the repository's `main` branch.
+1. Commit and push the Azure changes to the repository's `azure` branch.
 2. In GitHub, open the repository's **Actions** tab and wait for **Build CareerSignal container** to pass.
 3. Open your GitHub profile's **Packages** page and select `careersignal-web`.
 4. If Azure will pull the image without registry credentials, set the package visibility to **Public**. The image contains the same public application code as this public repository, but never put secrets in the image.
@@ -38,17 +38,19 @@ In the Azure Portal:
 
 The application uses `/` for Angular and same-origin `/api/searches` routes for the gateway. Do not configure a separate Azure API URL in Angular.
 
-## 3. Configure Container Apps authentication
+## 3. Configure Microsoft sign-in for the Express environment
 
-The site should remain publicly viewable, while live API calls require a sign-in. Configure the Container App's built-in **Authentication** using Microsoft Entra ID:
+The Express environment does not support Container Apps' built-in Authentication blade. The Node gateway performs Microsoft Entra OpenID Connect itself, so do not add an identity provider in the Container App portal. Keep public ingress enabled for the demo; the gateway protects live API routes with an encrypted, HttpOnly session and an exact email allowlist.
 
-1. Open the Container App and select **Authentication** (in some portal layouts this is under **Settings**).
-2. Add the **Microsoft** / **Microsoft Entra ID** identity provider. Use the portal's managed app registration option if available, or create an app registration as prompted. Complete the provider's redirect/callback setup exactly as the portal displays it.
-3. Configure unauthenticated requests to be **allowed** so the public demo and static assets remain accessible. The gateway itself rejects unauthenticated `/api` requests. Do not disable the identity provider after setup.
-4. Save and restart/create the new revision if prompted.
-5. Set `CAREERSIGNAL_ALLOWED_EMAIL` below to the email Entra places in the authenticated principal. The gateway checks this exact email before accepting any live request.
+Use an app registration in your workforce tenant. You can reuse the registration created during the failed Container Apps authentication attempt; do not create duplicates. In **Microsoft Entra ID → App registrations → your registration**:
 
-When the user selects **Live**, the app sends them to `/api/access-login`, which redirects to the Container App's Entra sign-in route. The platform supplies the authenticated principal to the server; the gateway checks the email allowlist. Test that an unauthenticated `POST /api/searches` gets HTTP 401 and that signing in with an unapproved account does not start a workflow. If you cannot configure the provider or verify those rejections, do not use Live mode.
+1. Set **Supported account types** to **Accounts in this organizational directory only**.
+2. Under **Authentication**, add a **Web** redirect URI exactly as follows:
+   `https://careersignal-web.purplehill-d5ad3b16.spaincentral.azurecontainerapps.io/api/auth/callback`
+3. Under **Certificates & secrets**, create a client secret and copy its value immediately. It is separate from the Azure Function key. Set a reminder to rotate it before expiry.
+4. Copy the registration's **Application (client) ID** and the directory **Tenant ID**. No Microsoft Graph permissions are needed; the app requests only `openid profile email` scopes.
+
+When the candidate selects **Live**, `/api/access-login` starts the authorization-code flow with PKCE. The gateway validates the returned token's signature, tenant issuer, audience, expiry, nonce, and allowed email. It encrypts the resulting session in a Secure, HttpOnly, SameSite cookie. The Azure Function key and Durable status URL remain server-side. Test with the configured email and confirm another tenant account is rejected.
 
 ## 4. Add application settings and secrets
 
@@ -56,8 +58,10 @@ Open the Container App's **Settings → Secrets** and add:
 
 - `careersignal-function-key`: the rotated Azure Function key.
 - `careersignal-status-encryption-key`: a new random 32-byte key encoded as 64 hexadecimal characters.
+- `careersignal-entra-client-secret`: the Entra app registration client secret.
+- `careersignal-session-encryption-key`: a separate new random 32-byte key encoded as 64 hexadecimal characters.
 
-Generate the encryption key locally in PowerShell (from the `CareerSignal-Web` folder):
+Generate separate status and session encryption keys locally in PowerShell (from the `CareerSignal-Web` folder). Run the command twice and use a different value for each secret:
 
 ```powershell
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
@@ -68,6 +72,11 @@ Do not paste either secret into chat, GitHub, Angular environment files, or the 
 | Name | Value |
 |---|---|
 | `CAREERSIGNAL_AUTH_PROVIDER` | `azure` |
+| `CAREERSIGNAL_PUBLIC_ORIGIN` | `https://careersignal-web.purplehill-d5ad3b16.spaincentral.azurecontainerapps.io` |
+| `CAREERSIGNAL_ENTRA_TENANT_ID` | The Entra directory Tenant ID |
+| `CAREERSIGNAL_ENTRA_CLIENT_ID` | The Entra app registration Application (client) ID |
+| `CAREERSIGNAL_ENTRA_CLIENT_SECRET` | Reference the `careersignal-entra-client-secret` secret |
+| `CAREERSIGNAL_SESSION_ENCRYPTION_KEY` | Reference the `careersignal-session-encryption-key` secret |
 | `CAREERSIGNAL_ALLOWED_EMAIL` | The one account allowed to run live searches |
 | `CAREERSIGNAL_FUNCTION_APP_URL` | Function App origin only: `https://hr-function-brercabzfnf2d7gj.spaincentral-01.azurewebsites.net` (use this only if it is still your Function App) |
 | `CAREERSIGNAL_FUNCTION_KEY` | Reference the `careersignal-function-key` secret |
@@ -82,14 +91,14 @@ Save the configuration and create a new revision. Check **Revisions and replicas
 
 1. Open the public HTTPS URL in a private browser window. Confirm the Demo experience loads without sign-in.
 2. In browser developer tools, check that `/api/searches` is same-origin. The browser must never request the Azure Function hostname directly.
-3. Before sign-in, a direct POST to `/api/searches` should return 401. Selecting Live should redirect to Entra sign-in.
+3. Before sign-in, a direct POST to `/api/searches` should return 401. Selecting Live should redirect to the Microsoft sign-in page.
 4. Sign in with the allowlisted account and submit a fictional test CV first. Confirm the API start returns 202, polling reaches a terminal state, and completed results appear in the contacts view without a browser reload.
-5. Try an account that is not allowlisted and verify it cannot start a search. Also verify Azure workflow failures appear as errors, not demo results.
+5. Try a different Microsoft account and verify it cannot start a workflow. Also verify Azure workflow failures appear as errors, not demo results.
 
 Do not test with a real CV until all access checks pass. The workflow sends candidate information to the existing Azure AI Foundry and GetProspect integrations and may consume provider credits.
 
 ## Updating the app
 
-Every push to `main` builds and publishes a new image. Container Apps does not necessarily replace a running revision just because the `latest` tag changed. After the workflow succeeds, update the app's container image/revision in the portal to the new immutable SHA tag (recommended), then save and wait for the new revision to become healthy. Keep the previous healthy revision until the new one is verified.
+Every push to `azure` builds and publishes `latest` plus an immutable commit-SHA tag. Container Apps does not automatically pull a changed image just because the `latest` tag moved. To deploy manually, open the Container App's **Revisions and replicas** (or **Containers**) page, edit the image tag and save to create a new revision. Keep the tag as `latest` to deploy the newest build, or select a SHA tag to deploy a specific build. Wait for the revision to become healthy and receive traffic before removing the previous healthy revision.
 
 The current in-memory submission limiter is process-local and resets when the container restarts. It is an additional guard for this single-operator setup, not a durable quota or a substitute for authentication. For public multi-user use, add persistent per-user authorization, rate limiting, retention/deletion controls, and ownership in the backend before enabling live processing.
