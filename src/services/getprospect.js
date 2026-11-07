@@ -1,6 +1,6 @@
 "use strict";
 
-const { getSecret } = require("./key-vault");
+let apiKeyProvider = secretName => require("./key-vault").getSecret(secretName);
 
 const BASE_URL = "https://api.getprospect.com";
 const REQUEST_TIMEOUT_MS = 30000;
@@ -13,8 +13,15 @@ function parseRetryDelay(value, attempt) {
     return Math.min(500 * (2 ** attempt), 4000);
 }
 
+function setApiKeyProvider(provider) {
+    if (provider !== null && typeof provider !== "function") {
+        throw new TypeError("GetProspect API key provider must be a function or null.");
+    }
+    apiKeyProvider = provider || (secretName => require("./key-vault").getSecret(secretName));
+}
+
 async function post(path, body, { retrySafe = false } = {}) {
-    const apiKey = await getSecret("GetProspectApiKey");
+    const apiKey = await apiKeyProvider("GetProspectApiKey");
     if (!apiKey) throw new Error("Key Vault secret GetProspectApiKey is empty.");
 
     for (let attempt = 0; ; attempt++) {
@@ -138,4 +145,4 @@ async function enrichPerson(person) {
     return result.data || null;
 }
 
-module.exports = { searchCompanies, searchHrContacts, enrichPerson, searchPages };
+module.exports = { searchCompanies, searchHrContacts, enrichPerson, searchPages, setApiKeyProvider };

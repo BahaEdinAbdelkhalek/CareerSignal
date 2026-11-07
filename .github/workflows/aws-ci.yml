@@ -1,0 +1,65 @@
+name: Test CareerSignal AWS path
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'aws/**'
+      - 'infra/aws/**'
+      - 'src/services/**'
+      - 'test/**'
+      - 'CareerSignal-Web/worker.mjs'
+      - 'CareerSignal-Web/worker.test.mjs'
+      - '.github/workflows/aws-ci.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.x'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            aws/package-lock.json
+            CareerSignal-Web/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci
+
+      - name: Test backend and AWS workflow adapters
+        run: npm test
+
+      - name: Install AWS runtime dependencies
+        run: npm ci --prefix aws
+
+      - name: Test AWS runtime package
+        run: npm test --prefix aws
+
+      - name: Install frontend dependencies and run gateway tests
+        working-directory: CareerSignal-Web
+        run: npm ci && npm test
+
+      - name: Validate CloudFormation templates
+        run: |
+          python -m pip install --disable-pip-version-check cfn-lint
+          cfn-lint infra/aws/*.yml
+
+      - name: Package Lambda runtime
+        run: python aws/scripts/package.py
+
+      - name: Upload Lambda artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: careersignal-aws-lambda
+          path: aws/build/careersignal-aws.zip
+          if-no-files-found: error

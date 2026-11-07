@@ -7,3 +7,16 @@ local.settings.json
 !.env.example
 *.log
 coverage/
+
+# Terraform working files and local state can contain secrets.
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+terraform.rc
+.terraformrc
+
+# AWS Lambda build artifacts and vendored runtime dependencies.
+aws/build/
+aws/node_modules/

@@ -1,0 +1,91 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  CareerSignal AWS foundation. Creates private object storage and an on-demand
+  owner-scoped table with lifecycle expiry. Does not deploy application code.
+
+Resources:
+  CareerSignalCvBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Delete
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExpireTemporaryCvObjects
+            Status: Enabled
+            Prefix: cv/
+            ExpirationInDays: 2
+          - Id: ExpireProcessingObjects
+            Status: Enabled
+            Prefix: jobs/
+            ExpirationInDays: 2
+          - Id: ExpireSearchResults
+            Status: Enabled
+            Prefix: results/
+            ExpirationInDays: 30
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Suspended
+
+  CareerSignalCvBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref CareerSignalCvBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: s3:*
+            Resource:
+              - !GetAtt CareerSignalCvBucket.Arn
+              - !Sub "${CareerSignalCvBucket.Arn}/*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+
+  CareerSignalSearchesTable:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: ownerId
+          AttributeType: S
+        - AttributeName: searchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: ownerId
+          KeyType: HASH
+        - AttributeName: searchId
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+Outputs:
+  CvBucketName:
+    Description: Private S3 bucket. Store temporary CV objects under the cv/ prefix.
+    Value: !Ref CareerSignalCvBucket
+  CvBucketArn:
+    Description: S3 bucket ARN for the Lambda execution role policy.
+    Value: !GetAtt CareerSignalCvBucket.Arn
+  SearchesTableName:
+    Description: DynamoDB table keyed by ownerId and searchId; TTL uses Unix epoch seconds in expiresAt.
+    Value: !Ref CareerSignalSearchesTable
+  SearchesTableArn:
+    Description: DynamoDB table ARN for the Lambda execution role policy.
+    Value: !GetAtt CareerSignalSearchesTable.Arn

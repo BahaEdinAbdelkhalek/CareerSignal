@@ -2,162 +2,85 @@
 
 ![CareerSignal cover](CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png)
 
----
+Node.js 24+ · Angular 20 · AWS Lambda · Step Functions · Cloudflare Worker · Demo uses fictional data
 
-<p>
-  <br>
-  <img alt="Node.js 24+" src="https://img.shields.io/badge/Node.js-24%2B-339933.svg?style=for-the-badge&logo=nodedotjs&logoColor=white" />
-  <img alt="Angular 20" src="https://img.shields.io/badge/Angular-20-DD0031.svg?style=for-the-badge&logo=angular&logoColor=white" />
-  <img alt="Azure Functions v4" src="https://img.shields.io/badge/Azure%20Functions-v4-0062AD.svg?style=for-the-badge&logo=azurefunctions&logoColor=white" />
-  <img alt="Azure Durable Functions" src="https://img.shields.io/badge/Azure-Durable%20Functions-0062AD.svg?style=for-the-badge&logo=microsoftazure&logoColor=white" />
-  <img alt="Demo uses fictional data" src="https://img.shields.io/badge/Public%20Demo-Fictional%20Data-16865A.svg?style=for-the-badge" />
-</p>
+CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares one outreach draft per selected contact. It does not discover vacancies, verify that a company is hiring, or send email.
 
----
+## Platform branches
 
-CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares an individual outreach draft for each selected contact.
+- `main` is the AWS backend path. It uses S3, DynamoDB, Lambda, Step Functions, API Gateway, and Systems Manager Parameter Store. The public Angular app and Access gateway remain on Cloudflare for now.
+- `azure` retains the Azure Functions/Durable Functions implementation. Its hosting and deployment are separate from the AWS implementation.
 
-It focuses on **contact discovery and outreach preparation**. It does not discover vacancies, verify that a company is hiring, or send email. Public frontend demo data is fictional; live searches are available only to the single Cloudflare Access identity configured for the restricted gateway.
+Both paths are intended to preserve the same workflow and browser API behavior. The AWS code and CloudFormation are local and **have not been deployed or verified in the AWS Academy account**. Its use of `LabRole` is still subject to the lab's trust-policy, permission, and `iam:PassRole` limits. Do not treat the AWS path as live until those checks pass and a fictional end-to-end test succeeds.
 
-## What the workflow does
+## Workflow
 
-1. Accepts a text CV or a text-based PDF (maximum 10 MB; scanned PDFs are not OCR'd).
-2. Extracts CV text and stores it temporarily in Azure Blob Storage.
-3. Uses Azure AI Foundry to extract evidence-based skills, target roles, search keywords, target countries and gaps.
-4. Searches GetProspect for companies and evaluates a bounded set of results against the candidate profile.
-5. Searches those companies for HR / Talent Acquisition contacts.
-6. Ranks contacts using role relevance, company fit and email availability, and selects no more than five contacts (maximum two per company).
-7. Attempts sequential email enrichment for those five contacts only.
-8. Generates one individual draft per shortlisted contact. Recipient identity, company name and email are taken from provider data, not invented by the language model.
+1. Accepts plain-text CV content or a text-based PDF up to 10 MB. Scanned PDFs are not OCR'd.
+2. Extracts CV text and stores it temporarily in private S3.
+3. Uses a configured OpenAI-compatible Chat Completions endpoint to extract evidence-based skills, roles, search keywords, countries, and gaps.
+4. Searches GetProspect for companies and ranks a bounded result set using deterministic matching rules.
+5. Searches those companies for HR/Talent Acquisition contacts, ranks them, and selects no more than five (at most two per company).
+6. Attempts sequential email enrichment for those five contacts only.
+7. Generates one editable outreach draft per contact. Recipient name, company, and email come from provider data, not model claims.
 
-## Architecture
+GetProspect email enrichment can consume credits. The model endpoint can also charge and receives CV information. Bedrock is not assumed to be available in the Learner Lab. Review provider pricing and privacy terms before using real CVs.
 
-```mermaid
-flowchart TD
-    A[POST /career-signal] --> B[PDF or text CV validation]
-    B --> C[Temporary Blob Storage]
-    C --> D[Durable Functions orchestrator]
-    D --> E[Azure AI Foundry: CV analysis]
-    E --> F[GetProspect: company search]
-    F --> G[Deterministic company scoring]
-    G --> H[GetProspect: HR contact search]
-    H --> I[Deterministic contact ranking]
-    I --> J[Enrich maximum five contacts]
-    J --> K[Azure AI Foundry: email drafts]
-    K --> L[Durable status/result endpoint]
-    M[Daily CV cleanup timer] --> N[Delete orphaned CV blobs]
-    P[Durable Task Scheduler autopurge] --> O[Retain terminal history for 30 days by default]
+## Matching model
+
+Company fit is a weighted heuristic: keyword relevance (45%), candidate skills (25%), target roles (15%), and additional matching criteria (15%). If country data exists on both sides, up to 15 points are reserved for country match.
+
+Contact fit uses HR role relevance (65%), company fit (30%), and email availability (5%). Non-HR titles and weak company matches are filtered. Scores are not probabilities; results include score breakdowns and match reasons for inspection.
+
+## AWS deployment
+
+The CloudFormation templates are under [`infra/aws/`](infra/aws/README.md):
+
+- `foundation.yml` creates private, encrypted S3 storage and an on-demand DynamoDB table. CV and processing objects expire after two days; results after 30 days. S3 lifecycle and DynamoDB TTL cleanup are asynchronous.
+- `application.yml` creates an HTTP API, Node.js 24 Lambda handlers, a Standard Step Functions workflow, and seven-day Lambda log retention. It reuses existing role ARNs and creates no IAM roles.
+
+The AWS API accepts only signed requests from the Cloudflare Worker. The Worker verifies the configured Cloudflare Access identity and allowlisted email, applies a rate limit, and keeps search handles opaque and owner-bound. PDF uploads use a short-lived presigned S3 URL. See [`docs/aws-cloudflare-gateway.md`](docs/aws-cloudflare-gateway.md) and follow the role/budget checks in [`infra/aws/README.md`](infra/aws/README.md) before provisioning.
+
+The package requires Node.js 24 and a Linux build environment such as AWS CloudShell:
+
+```sh
+cd aws
+npm ci
+cd ..
+python aws/scripts/package.py
 ```
 
-### Matching model
+This creates `aws/build/careersignal-aws.zip`; it does not deploy anything. AWS API Gateway, Lambda, Step Functions, S3, DynamoDB, KMS/SSM, and CloudWatch usage is not guaranteed free. Learner Lab budget updates can lag by 8–12 hours.
 
-Company fit is a transparent weighted score: company-search keyword relevance (45%), candidate skills (25%), target roles (15%) and additional matching criteria (15%). Where both the candidate preference and company data contain a country code, the profile score is weighted to reserve up to 15 points for a country match.
+## Azure branch
 
-Contact fit uses HR role relevance (65%), company fit (30%) and email availability (5%). Non-HR titles are excluded. Contacts below the configured minimum score or from weakly matched companies are excluded. At most two contacts are selected from one company.
+The `azure` branch keeps the existing Azure Functions v4, Durable Functions, Blob Storage, Key Vault, and Foundry implementation. Its deployment instructions remain in that branch's README and `docs/` files. Do not deploy both backend paths for the same UI without deliberately configuring which API the Worker calls.
 
-These are heuristic ranking scores, not machine-learned probabilities. A score of 90 does not mean a 90% chance of a reply or an interview. Each result includes a score breakdown and match reasons so a user can inspect why it ranked.
+## Frontend and local tests
 
-## API
+The Angular app in [`CareerSignal-Web/`](CareerSignal-Web/README.md) has a fictional-data Demo mode and a Live mode through the same-origin Worker gateway. Demo mode never calls the backend or GetProspect. The selected PDF in Demo mode is validated locally but not uploaded or parsed.
 
-### Start a search
+Run the backend and AWS adapter tests from the repository root:
 
-`POST /api/career-signal` (Function key required)
-
-PDF upload: `multipart/form-data` with `cv` as a PDF and optional `preferences` as a JSON object.
-
-Text upload:
-
-```json
-{
-  "cvText": "Plain-text CV content...",
-  "preferences": {
-    "countryCodes": ["FR", "BE"],
-    "targetRoles": ["Cloud / DevOps Engineer"],
-    "internshipDuration": "6 months",
-    "startDate": "2027-01"
-  }
-}
-```
-
-The response contains Durable Functions status-management URLs. Poll the returned `statusQueryGetUri` until the workflow completes; the completed output contains `analysis`, ranked `companies`, up to five `contacts`, `drafts`, and a summary. Protect the status-management URLs as credentials: do not publish them or write them to analytics/logs.
-
-The API accepts a maximum 10 MB PDF, 100,000 extracted/text CV characters and 10 KB of preferences. Only text-based PDFs are supported; image-only/scanned PDFs return `422` because OCR is not implemented.
-
-### Delete a completed search
-
-`DELETE /api/career-signal/{instanceId}` (Function key required)
-
-This deletes the temporary CV blob, where present, and purges Durable Functions history for a completed, failed, terminated or cancelled instance. A running instance returns `409`; terminate it through the Durable management URL first. The endpoint is protected by a Function key, not per-user authentication. Do not expose the Function key in a public client.
-
-## Configuration
-
-Function App application settings:
-
-| Setting | Purpose |
-|---|---|
-| `KEY_VAULT_URL` | Key Vault URI |
-| `AZURE_CLIENT_ID` | Client ID of the user-assigned managed identity |
-| `CV_STORAGE_ACCOUNT_URL` | Blob Storage account endpoint, e.g. `https://<account>.blob.core.windows.net` |
-| `CV_CONTAINER_NAME` | Optional; defaults to `candidate-cvs` |
-| `FOUNDRY_ENDPOINT` | Azure AI Foundry project/model endpoint base URL used by the Responses API |
-| `FOUNDRY_MODEL_DEPLOYMENT` | Model deployment name |
-| `DURABLE_TASK_SCHEDULER_CONNECTION_STRING` | Durable Task Scheduler connection string configured in `host.json` |
-| `CAREERSIGNAL_CV_ORPHAN_RETENTION_HOURS` | Orphaned CV blob cleanup age; defaults to 48 hours (allowed: 24–720) |
-| `CAREERSIGNAL_RETENTION_CRON` | Optional NCRONTAB schedule; defaults to `0 0 3 * * *` (03:00 UTC daily) |
-
-Key Vault secrets (exact names):
-
-- `GetProspectApiKey`
-- `FOUNDRY-API-KEY`
-
-The Function App's user-assigned managed identity needs **Key Vault Secrets User** on the vault and **Storage Blob Data Contributor** on the CV container or storage account. `AZURE_CLIENT_ID` must be that identity's client ID. Do not place API keys in source control or ordinary application settings.
-
-## Local development
-
-Requires Node.js 24 or later.
-
-```powershell
+```sh
 npm ci
 npm run check
 npm test
-func start
 ```
 
-Provide local values through `local.settings.json` (never commit it). The automated unit tests for matching, draft normalization and lazy Key Vault configuration do not call Azure or GetProspect.
-
-## Privacy, security and product limits
-
-- The original PDF is parsed in memory; extracted CV text is uploaded as a temporary blob and deleted after CV analysis. A daily sweep removes orphaned candidate-CV blobs older than the configured threshold.
-- Durable Task Scheduler autopurge is enabled by default and retains terminal orchestration history for 30 days. The scheduler retention policy is configured at the scheduler resource, not by a Function App setting; eligible statuses include Completed, Failed, Canceled and Terminated. Any custom policy applies across every task hub on that scheduler. Users may request earlier deletion through the DELETE endpoint.
-- CV text is sent to the configured Azure AI Foundry deployment. Company/contact searches and up to five email-enrichment attempts are sent to GetProspect. A privacy notice must disclose these processors before real candidate CVs are used.
-- GetProspect email enrichment can consume credits. The implementation caps attempts at five per workflow and runs them sequentially. Review the provider's current credit/rate-limit terms before production use.
-- Email drafts are suggestions for human review. CareerSignal does not send messages.
-- The current API uses Function-key authorization and does not implement user accounts, tenant isolation, per-user result ownership, consent records, or a user-facing deletion dashboard. It is suitable for a controlled prototype, not a public multi-user launch without an identity/access-control layer.
-- The 10 MB PDF size is validated by the function after multipart parsing. On Flex Consumption, `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT` is not used; enforce an ingress-level request cap with an API gateway or equivalent before exposing this endpoint publicly.
-- A heuristic match is not evidence of a live vacancy. Verify the company, recipient's current position, email validity and internship availability before contacting anyone.
-
-## Frontend
-
-The Angular application is in [`CareerSignal-Web/`](CareerSignal-Web/README.md). It provides a public product page and candidate workspace with CV selection, preference review, discovery results, and editable outreach drafts. Demo mode is enabled by default and uses fictional data only; it never calls the backend or GetProspect. The PDF selection in demo mode validates the file locally but does not upload or parse it.
-
-Run the frontend locally (Node.js 24+ and npm):
+Run the frontend/gateway tests and build from `CareerSignal-Web/`:
 
 ```sh
-cd CareerSignal-Web
 npm ci
-npm start
+npm test
+npm run build
 ```
 
-Build it for production with `npm run build`. The output is `CareerSignal-Web/dist/careersignal/browser`.
+The AWS path has unit tests for request signing, input validation, model-adapter behavior, and workflow stages. Those tests do not verify AWS permissions or make calls to AWS, GetProspect, or a model provider.
 
-The Angular app defaults to fictional demo data. A Live mode is available through the Cloudflare Access-protected Worker gateway. The gateway sends the Azure Function key only from the server, keeps Durable status URLs out of the browser, and allows the configured operator only. The backend still has no general user accounts or per-user ownership, so live processing is not open to public users. See [`docs/cloudflare-worker-gateway.md`](docs/cloudflare-worker-gateway.md) before enabling real CVs.
+## Privacy and limits
 
-## Frontend hosting
-
-The public demo and same-origin API gateway run on the `careersignal` Cloudflare Worker. Its Git-connected build uses `CareerSignal-Web` as the root directory, `npm test && npm run build` as the build command, and `npx wrangler deploy` to deploy the Worker and `dist/careersignal/browser` static assets. The existing Azure Static Web Apps workflow was removed because the Azure subscription rejected all regions. The backend remains on Azure Functions. See [`docs/cloudflare-worker-gateway.md`](docs/cloudflare-worker-gateway.md) for Access and secret configuration.
-
-## Backend deployment
-
-GitHub Actions runs `npm ci`, syntax checks and unit tests before packaging the Node.js application for the `hr-function` Azure Function App. Deployment still requires the existing publish-profile secret in the GitHub repository.
-
-The workflow intentionally packages `host.json`, package manifests, `src` and installed production dependencies. Tests and documentation are not shipped in the runtime artifact.
+- The original PDF is deleted after analysis; lifecycle expiry is a fallback, not an exact deletion deadline.
+- Processing objects are removed after successful completion or failure where possible, with two-day lifecycle expiry as a fallback. Results are configured for 30-day S3 expiry and DynamoDB TTL.
+- Standard Step Functions history remains for up to 90 days and cannot be purged by the delete endpoint. The state machine passes S3 keys and IDs, not CV text, analysis, contacts, or result bodies.
+- The AWS Live path is restricted to one Cloudflare Access identity. Do not expose the gateway HMAC key or status-encryption key. Anyone with the HMAC key can impersonate the Worker to the AWS API.
+- Email drafts are suggestions for human review. Verify the company, recipient's current role, email validity, and internship availability before contacting anyone.

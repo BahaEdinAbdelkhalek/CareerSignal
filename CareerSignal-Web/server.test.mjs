@@ -12,7 +12,11 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
   await writeFile(join(assetDirectory, 'styles-test.css'), 'body { color: green; }');
   const server = createCareerSignalServer({
     assetDirectory,
-    env: { CAREERSIGNAL_AUTH_PROVIDER: 'azure', CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com' },
+    env: {
+      ACCESS_ISSUER: 'https://team.cloudflareaccess.com',
+      ACCESS_AUD: 'test-audience',
+      CAREERSIGNAL_ALLOWED_EMAIL: 'operator@example.com',
+    },
   });
   server.listen(0, '127.0.0.1');
   await once(server, 'listening');
@@ -40,24 +44,7 @@ test('container serves the SPA and rejects unauthenticated gateway calls', async
     assert.equal(unauthorized.status, 401);
 
     const login = await fetch(`${baseUrl}/api/access-login`, { redirect: 'manual' });
-    assert.equal(login.status, 302);
-    assert.ok(login.headers.get('location').includes('/.auth/login/aad'));
-
-    const principal = Buffer.from(JSON.stringify({
-      userId: 'operator-1',
-      userDetails: 'operator@example.com',
-      claims: [],
-    })).toString('base64');
-    const authenticatedButUnconfigured = await fetch(`${baseUrl}/api/searches`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        origin: baseUrl,
-        'x-ms-client-principal': principal,
-      },
-      body: JSON.stringify({ cvText: 'fictional test', preferences: {} }),
-    });
-    assert.equal(authenticatedButUnconfigured.status, 503);
+    assert.equal(login.status, 401);
   } finally {
     server.close();
     await once(server, 'close');

@@ -1,6 +1,13 @@
 "use strict";
 
-const { getSecret } = require("./key-vault");
+let chatJsonProvider = null;
+
+function setChatJsonProvider(provider) {
+    if (provider !== null && typeof provider !== "function") {
+        throw new TypeError("Model provider must be a function or null.");
+    }
+    chatJsonProvider = provider;
+}
 
 function extractJson(text) {
     const cleaned = String(text || "")
@@ -32,12 +39,14 @@ function getResponseText(payload) {
 }
 
 async function chatJson(systemPrompt, userPrompt) {
+    if (chatJsonProvider) return chatJsonProvider(systemPrompt, userPrompt);
+
     const endpoint = (process.env.FOUNDRY_ENDPOINT || "").replace(/\/+$/, "");
     const deployment = process.env.FOUNDRY_MODEL_DEPLOYMENT || "";
     if (!endpoint) throw new Error("Missing app setting: FOUNDRY_ENDPOINT");
     if (!deployment) throw new Error("Missing app setting: FOUNDRY_MODEL_DEPLOYMENT");
 
-    const apiKey = await getSecret("FOUNDRY-API-KEY");
+    const apiKey = await require("./key-vault").getSecret("FOUNDRY-API-KEY");
     if (!apiKey) throw new Error("Key Vault secret FOUNDRY-API-KEY is empty.");
 
     const response = await fetch(`${endpoint}/openai/v1/responses`, {
@@ -197,5 +206,6 @@ module.exports = {
     normalizeAnalysis,
     normalizeDraftResults,
     analyseCv,
-    createDrafts
+    createDrafts,
+    setChatJsonProvider
 };

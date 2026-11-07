@@ -55,7 +55,7 @@ async function getAccessJwks(issuer) {
 }
 
 async function authenticate(request, env) {
-  if (env.CAREERSIGNAL_AUTH_PROVIDER === 'azure') {
+  if (env.CAREERSIGNAL_TRUSTED_SERVER_AUTH === 'true') {
     if (!env.CAREERSIGNAL_ALLOWED_EMAIL) {
       return { error: json({ error: 'Live search authentication is not configured.' }, 503) };
     }
@@ -73,9 +73,7 @@ async function authenticate(request, env) {
       const allowedEmail = env.CAREERSIGNAL_ALLOWED_EMAIL.toLowerCase();
       const email = [principal.userDetails, emailClaim?.val]
         .find(value => typeof value === 'string' && value.toLowerCase() === allowedEmail);
-      if (typeof principal.userId !== 'string' || !principal.userId || !email) {
-        throw new Error('This account is not authorized.');
-      }
+      if (typeof principal.userId !== 'string' || !principal.userId || !email) throw new Error('Unauthorized principal.');
       return { userId: principal.userId };
     } catch {
       return { error: json({ error: 'Your sign-in could not be verified. Sign in again and retry.' }, 401) };
@@ -149,14 +147,9 @@ async function openHandle(handle, env, userId) {
   const key = await encryptionKey(env, 'decrypt');
   const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: base64UrlDecode(parts[0]) }, key, base64UrlDecode(parts[1]));
   const payload = JSON.parse(new TextDecoder().decode(decrypted));
-  if (payload.owner !== userId || payload.expiresAt <= Date.now()) throw new Error('Search handle expired or unauthorized.');
-  if (typeof payload.instanceId !== 'string' || !/^[0-9a-f-]{36}$/i.test(payload.instanceId)) throw new Error('Invalid search handle.');
-  const statusUrl = new URL(payload.statusUrl);
-  const appUrl = new URL(env.CAREERSIGNAL_FUNCTION_APP_URL);
-  if (statusUrl.protocol !== 'https:' || statusUrl.origin !== appUrl.origin || !statusUrl.pathname.includes('/runtime/webhooks/durabletask/instances/')) {
-    throw new Error('Invalid workflow status address.');
-  }
-  return { instanceId: payload.instanceId, statusUrl: statusUrl.href };
+  if (payload.owner !== userId || !Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) throw new Error('Search handle expired or unauthorized.');
+  if (typeof payload.searchId !== 'string' || !/^[0-9a-f-]{36}$/i.test(payload.searchId)) throw new Error('Invalid search handle.');
+  return { searchId: payload.searchId };
 }
 
 function secureAssetResponse(response) {
@@ -177,15 +170,62 @@ function validateRequestOrigin(request) {
 }
 
 function backendConfiguration(env) {
-  if (!env.CAREERSIGNAL_FUNCTION_APP_URL || !env.CAREERSIGNAL_FUNCTION_KEY || !env.CAREERSIGNAL_STATUS_ENCRYPTION_KEY) {
+  if (!env.CAREERSIGNAL_AWS_API_URL || !env.CAREERSIGNAL_GATEWAY_HMAC_KEY || !env.CAREERSIGNAL_STATUS_ENCRYPTION_KEY) {
     throw new Error('Backend gateway configuration is incomplete.');
   }
+  if (new TextEncoder().encode(env.CAREERSIGNAL_GATEWAY_HMAC_KEY).length < 32) {
+    throw new Error('The gateway signing key is too short.');
+  }
   hexToBytes(env.CAREERSIGNAL_STATUS_ENCRYPTION_KEY);
-  const base = new URL(env.CAREERSIGNAL_FUNCTION_APP_URL);
+  const base = new URL(env.CAREERSIGNAL_AWS_API_URL);
   if (base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash) {
     throw new Error('Backend URL must be an HTTPS origin only.');
   }
   return base;
+}
+
+function bytesToHex(bytes) {
+  return [...new Uint8Array(bytes)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function callAwsApi(base, env, userId, method, path, body = new Uint8Array(), contentType = '') {
+  const timestamp = String(Math.floor(Date.now() / 1000));
+  const nonce = crypto.randomUUID();
+  const digest = bytesToHex(await crypto.subtle.digest('SHA-256', body));
+  const canonical = [method.toUpperCase(), path, timestamp, nonce, userId, digest].join('\n');
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(env.CAREERSIGNAL_GATEWAY_HMAC_KEY),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = bytesToHex(await crypto.subtle.sign('HMAC', key, encoder.encode(canonical)));
+  const headers = new Headers({
+    'x-careersignal-timestamp': timestamp,
+    'x-careersignal-nonce': nonce,
+    'x-careersignal-user': userId,
+    'x-careersignal-signature': signature,
+    accept: 'application/json',
+  });
+  if (contentType) headers.set('content-type', contentType);
+  return fetch(new URL(path, base), {
+    method,
+    headers,
+    body: body.byteLength ? body : undefined,
+    redirect: 'error',
+    cache: 'no-store',
+  });
+}
+
+async function apiError(response, fallback) {
+  try {
+    const body = await response.json();
+    if (typeof body.error === 'string') return body.error;
+  } catch {
+    // Return the fixed fallback; never expose an upstream page or response body.
+  }
+  return fallback;
 }
 
 async function startSearch(request, env, userId) {
@@ -211,42 +251,96 @@ async function startSearch(request, env, userId) {
   try {
     base = backendConfiguration(env);
   } catch {
-    return json({ error: 'The Azure gateway is not configured.' }, 503);
+    return json({ error: 'The AWS gateway is not configured.' }, 503);
   }
-  const endpoint = new URL('/api/career-signal', base);
-  const headers = new Headers({
-    'x-functions-key': env.CAREERSIGNAL_FUNCTION_KEY,
-    'content-type': contentType,
-    'accept': 'application/json',
-  });
+
+  let searchPayload;
+  if (contentType.startsWith('multipart/form-data;')) {
+    let form;
+    try {
+      form = await new Response(body, { headers: { 'content-type': contentType } }).formData();
+    } catch {
+      return json({ error: 'Upload a valid PDF and preferences form.' }, 400);
+    }
+    const file = form.get('cv');
+    if (!file || typeof file.arrayBuffer !== 'function') return json({ error: 'The PDF upload is missing.' }, 400);
+    if (!(file.name || '').toLowerCase().endsWith('.pdf')) return json({ error: 'Only PDF files are supported.' }, 415);
+    if (file.size < 1 || file.size > 10 * 1024 * 1024) return json({ error: 'PDF exceeds the 10 MB limit.' }, 413);
+
+    let preferences = {};
+    const rawPreferences = form.get('preferences');
+    if (typeof rawPreferences === 'string' && rawPreferences) {
+      if (new TextEncoder().encode(rawPreferences).byteLength > 10000) return json({ error: 'Preferences exceed the 10 KB limit.' }, 413);
+      try {
+        preferences = JSON.parse(rawPreferences);
+      } catch {
+        return json({ error: 'Preferences must contain valid JSON.' }, 400);
+      }
+    }
+    if (!preferences || typeof preferences !== 'object' || Array.isArray(preferences)) {
+      return json({ error: 'Preferences must be a JSON object.' }, 400);
+    }
+
+    const uploadRequest = encoder.encode(JSON.stringify({ contentType: 'application/pdf', size: file.size }));
+    let uploadResponse;
+    try {
+      uploadResponse = await callAwsApi(base, env, userId, 'POST', '/api/uploads', uploadRequest, 'application/json');
+    } catch {
+      return json({ error: 'AWS could not prepare the PDF upload. Retry shortly.' }, 502);
+    }
+    if (!uploadResponse.ok) return json({ error: await apiError(uploadResponse, 'AWS could not prepare the PDF upload.') }, uploadResponse.status);
+
+    let upload;
+    try {
+      upload = await uploadResponse.json();
+      if (typeof upload.uploadUrl !== 'string' || typeof upload.objectKey !== 'string') throw new Error('Invalid upload response.');
+    } catch {
+      return json({ error: 'AWS returned an invalid upload response.' }, 502);
+    }
+
+    let uploaded;
+    try {
+      const pdfBytes = await file.arrayBuffer();
+      if (pdfBytes.byteLength !== file.size || new TextDecoder().decode(pdfBytes.slice(0, 5)) !== '%PDF-') {
+        return json({ error: 'The uploaded file is not a valid PDF.' }, 415);
+      }
+      uploaded = await fetch(upload.uploadUrl, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/pdf' },
+        body: pdfBytes,
+        redirect: 'error',
+      });
+    } catch {
+      return json({ error: 'The PDF could not be uploaded to temporary storage.' }, 502);
+    }
+    if (!uploaded.ok) return json({ error: 'The PDF could not be uploaded to temporary storage.' }, 502);
+    searchPayload = { cvObjectKey: upload.objectKey, preferences };
+  } else {
+    searchPayload = new TextDecoder().decode(body);
+  }
+
+  const requestBody = typeof searchPayload === 'string' ? encoder.encode(searchPayload) : encoder.encode(JSON.stringify(searchPayload));
   let upstream;
   try {
-    upstream = await fetch(endpoint, { method: 'POST', headers, body, redirect: 'manual' });
+    upstream = await callAwsApi(base, env, userId, 'POST', '/api/searches', requestBody, 'application/json');
   } catch {
-    return json({ error: 'Azure could not be reached. Retry shortly.' }, 502);
+    return json({ error: 'AWS could not start the search. Retry shortly.' }, 502);
   }
-  if (!upstream.ok) {
-    return json({ error: upstream.status === 429 ? 'Azure is rate-limiting requests. Retry shortly.' : `Azure could not start the search (HTTP ${upstream.status}).` }, 502);
-  }
+  if (!upstream.ok) return json({ error: await apiError(upstream, 'AWS could not start the search.') }, upstream.status);
 
-  let start;
+  let started;
   try {
-    start = await upstream.json();
+    started = await upstream.json();
   } catch {
-    return json({ error: 'Azure returned an invalid workflow response.' }, 502);
+    return json({ error: 'AWS returned an invalid workflow response.' }, 502);
   }
-  if (typeof start.id !== 'string' || !/^[0-9a-f-]{36}$/i.test(start.id) || typeof start.statusQueryGetUri !== 'string') {
-    return json({ error: 'Azure did not return a valid workflow handle.' }, 502);
+  if (typeof started.searchId !== 'string' || !/^[0-9a-f-]{36}$/i.test(started.searchId)) {
+    return json({ error: 'AWS did not return a valid search handle.' }, 502);
   }
 
   try {
-    const statusUrl = new URL(start.statusQueryGetUri);
-    if (statusUrl.origin !== base.origin || statusUrl.protocol !== 'https:' || !statusUrl.pathname.includes('/runtime/webhooks/durabletask/instances/')) {
-      return json({ error: 'Azure returned an unexpected workflow status address.' }, 502);
-    }
     const searchId = await sealHandle({
-      instanceId: start.id,
-      statusUrl: statusUrl.href,
+      searchId: started.searchId,
       owner: userId,
       expiresAt: Date.now() + HANDLE_TTL_SECONDS * 1000,
     }, env);
@@ -259,32 +353,28 @@ async function startSearch(request, env, userId) {
 async function getSearch(request, env, userId, handle) {
   if (!validateRequestOrigin(request)) return json({ error: 'Request origin is not allowed.' }, 403);
   let workflow;
+  let base;
   try {
     workflow = await openHandle(handle, env, userId);
+    base = backendConfiguration(env);
   } catch {
     return json({ error: 'This search link is invalid, expired, or belongs to another account.' }, 404);
   }
-  let statusResponse;
+  let response;
   try {
-    statusResponse = await fetch(workflow.statusUrl, { headers: { accept: 'application/json' }, cache: 'no-store', redirect: 'manual' });
+    response = await callAwsApi(base, env, userId, 'GET', `/api/searches/${workflow.searchId}`);
   } catch {
     return json({ error: 'Could not retrieve the workflow status. Retry shortly.' }, 502);
   }
-  if (!statusResponse.ok) return json({ error: `Azure status request failed (HTTP ${statusResponse.status}).` }, 502);
-  let status;
+  if (!response.ok) return json({ error: await apiError(response, 'Could not retrieve the workflow status.') }, response.status === 404 ? 404 : 502);
   try {
-    status = await statusResponse.json();
+    const status = await response.json();
+    if (!['Running', 'Completed', 'Failed', 'Terminated', 'Canceled'].includes(status.status)) throw new Error('Invalid workflow status.');
+    if (status.status === 'Completed' && (!status.result || typeof status.result !== 'object')) throw new Error('Missing workflow result.');
+    return json(status);
   } catch {
-    return json({ error: 'Azure returned an invalid workflow status.' }, 502);
+    return json({ error: 'AWS returned an invalid workflow status.' }, 502);
   }
-  if (status.runtimeStatus === 'Completed') {
-    if (!status.output || typeof status.output !== 'object') return json({ error: 'Azure completed without a result.' }, 502);
-    return json({ status: 'Completed', result: status.output });
-  }
-  if (['Failed', 'Terminated', 'Canceled'].includes(status.runtimeStatus)) {
-    return json({ status: status.runtimeStatus, error: `The workflow ${status.runtimeStatus.toLowerCase()}.` });
-  }
-  return json({ status: status.runtimeStatus || 'Running' });
 }
 
 async function deleteSearch(request, env, userId, handle) {
@@ -299,26 +389,17 @@ async function deleteSearch(request, env, userId, handle) {
   }
   let response;
   try {
-    response = await fetch(new URL(`/api/career-signal/${workflow.instanceId}`, base), {
-      method: 'DELETE',
-      headers: { 'x-functions-key': env.CAREERSIGNAL_FUNCTION_KEY, accept: 'application/json' },
-      redirect: 'manual',
-    });
+    response = await callAwsApi(base, env, userId, 'DELETE', `/api/searches/${workflow.searchId}`);
   } catch {
-    return json({ error: 'Azure could not delete this search. Retry shortly.' }, 502);
+    return json({ error: 'AWS could not delete this search. Retry shortly.' }, 502);
   }
-  if (!response.ok) return json({ error: response.status === 409 ? 'The workflow is still running. Deletion is not available yet.' : `Azure could not delete the search (HTTP ${response.status}).` }, response.status === 409 ? 409 : 502);
+  if (!response.ok) return json({ error: await apiError(response, 'AWS could not delete the search.') }, response.status === 409 ? 409 : response.status === 404 ? 404 : 502);
   return json({ deleted: true });
 }
 
 async function handleApi(request, env) {
   const path = new URL(request.url).pathname;
   if (path === '/api/access-login' && request.method === 'GET') {
-    if (env.CAREERSIGNAL_AUTH_PROVIDER === 'azure' && !request.headers.get('x-ms-client-principal')) {
-      const login = new URL('/.auth/login/aad', request.url);
-      login.searchParams.set('post_login_redirect_uri', '/');
-      return Response.redirect(login, 302);
-    }
     const auth = await authenticate(request, env);
     if (auth.error) return auth.error;
     return Response.redirect(new URL('/', request.url), 302);

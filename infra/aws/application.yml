@@ -1,0 +1,297 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  CareerSignal AWS application layer. Reuses the separately provisioned foundation
+  bucket and table, plus existing Learner Lab IAM roles; creates no IAM roles.
+
+Parameters:
+  DataBucketName:
+    Type: String
+    Description: CvBucketName output from infra/aws/foundation.yml.
+  SearchTableName:
+    Type: String
+    Description: SearchesTableName output from infra/aws/foundation.yml.
+  LambdaCodeBucketName:
+    Type: String
+    Description: Existing foundation bucket containing the packaged Lambda artifact.
+  LambdaCodeObjectKey:
+    Type: String
+    Description: S3 key of the packaged Lambda zip, for example artifacts/careersignal-aws.zip.
+  ProviderSecretsParameterName:
+    Type: String
+    Description: Name of a Systems Manager Standard SecureString containing the JSON provider secrets.
+    AllowedPattern: ^/[A-Za-z0-9_.\-/]+$
+  ApiLambdaExecutionRoleArn:
+    Type: String
+    Description: Existing role trusted by Lambda with access to the bucket, table, Step Functions, SSM, KMS and CloudWatch Logs.
+  TaskLambdaExecutionRoleArn:
+    Type: String
+    Description: Existing role trusted by Lambda with access to the bucket, table, SSM, KMS and CloudWatch Logs.
+  StateMachineExecutionRoleArn:
+    Type: String
+    Description: Existing role trusted by Step Functions with permission to invoke TaskFunction.
+  ModelApiEndpoint:
+    Type: String
+    Description: HTTPS base URL for an OpenAI-compatible Chat Completions API, such as https://provider.example/v1.
+  ModelApiName:
+    Type: String
+    Description: Model or deployment name accepted by the configured API.
+
+Resources:
+  ApiFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: aws/lambda/api.handler
+      Role: !Ref ApiLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucketName
+        S3Key: !Ref LambdaCodeObjectKey
+      MemorySize: 512
+      Timeout: 30
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          CAREERSIGNAL_DATA_BUCKET: !Ref DataBucketName
+          CAREERSIGNAL_SEARCH_TABLE: !Ref SearchTableName
+          CAREERSIGNAL_STATE_MACHINE_ARN: !Ref WorkflowStateMachine
+          CAREERSIGNAL_SECRETS_PARAMETER: !Ref ProviderSecretsParameterName
+      Architectures:
+        - x86_64
+
+  TaskFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: nodejs24.x
+      Handler: aws/lambda/tasks.handler
+      Role: !Ref TaskLambdaExecutionRoleArn
+      Code:
+        S3Bucket: !Ref LambdaCodeBucketName
+        S3Key: !Ref LambdaCodeObjectKey
+      MemorySize: 1024
+      Timeout: 180
+      ReservedConcurrentExecutions: 2
+      Environment:
+        Variables:
+          CAREERSIGNAL_DATA_BUCKET: !Ref DataBucketName
+          CAREERSIGNAL_SEARCH_TABLE: !Ref SearchTableName
+          CAREERSIGNAL_SECRETS_PARAMETER: !Ref ProviderSecretsParameterName
+          MODEL_API_ENDPOINT: !Ref ModelApiEndpoint
+          MODEL_API_MODEL: !Ref ModelApiName
+      Architectures:
+        - x86_64
+
+  WorkflowStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineType: STANDARD
+      RoleArn: !Ref StateMachineExecutionRoleArn
+      DefinitionSubstitutions:
+        TaskLambdaArn: !GetAtt TaskFunction.Arn
+      DefinitionString: |
+        {
+          "Comment": "CareerSignal CV analysis and contact discovery. State contains only owner IDs and S3 object keys.",
+          "StartAt": "Analyse",
+          "States": {
+            "Analyse": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "analyse",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId",
+                  "inputKey.$": "$.inputKey"
+                }
+              },
+              "ResultSelector": { "analysisKey.$": "$.Payload.analysisKey" },
+              "ResultPath": "$.analysis",
+              "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "MarkFailed" }],
+              "Next": "DiscoverCompanies"
+            },
+            "DiscoverCompanies": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "discoverCompanies",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId",
+                  "analysisKey.$": "$.analysis.analysisKey"
+                }
+              },
+              "ResultSelector": { "companiesKey.$": "$.Payload.companiesKey" },
+              "ResultPath": "$.companies",
+              "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "MarkFailed" }],
+              "Next": "DiscoverContacts"
+            },
+            "DiscoverContacts": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "discoverContacts",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId",
+                  "analysisKey.$": "$.analysis.analysisKey",
+                  "companiesKey.$": "$.companies.companiesKey"
+                }
+              },
+              "ResultSelector": { "contactsKey.$": "$.Payload.contactsKey" },
+              "ResultPath": "$.contacts",
+              "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "MarkFailed" }],
+              "Next": "EnrichContacts"
+            },
+            "EnrichContacts": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "enrichContacts",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId",
+                  "contactsKey.$": "$.contacts.contactsKey"
+                }
+              },
+              "ResultSelector": { "enrichedKey.$": "$.Payload.enrichedKey" },
+              "ResultPath": "$.enriched",
+              "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "MarkFailed" }],
+              "Next": "CreateDrafts"
+            },
+            "CreateDrafts": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "createDrafts",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId",
+                  "analysisKey.$": "$.analysis.analysisKey",
+                  "companiesKey.$": "$.companies.companiesKey",
+                  "contactsKey.$": "$.contacts.contactsKey",
+                  "enrichedKey.$": "$.enriched.enrichedKey"
+                }
+              },
+              "ResultPath": null,
+              "Catch": [{ "ErrorEquals": ["States.ALL"], "ResultPath": "$.failure", "Next": "MarkFailed" }],
+              "End": true
+            },
+            "MarkFailed": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::lambda:invoke",
+              "Parameters": {
+                "FunctionName": "${TaskLambdaArn}",
+                "Payload": {
+                  "action": "markFailed",
+                  "ownerId.$": "$.ownerId",
+                  "searchId.$": "$.searchId"
+                }
+              },
+              "ResultPath": null,
+              "End": true
+            }
+          }
+        }
+
+  HttpApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub "${AWS::StackName}-api"
+      ProtocolType: HTTP
+      Description: CareerSignal API. Requests require a signed Cloudflare gateway assertion.
+
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref HttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !GetAtt ApiFunction.Arn
+      PayloadFormatVersion: "2.0"
+      TimeoutInMillis: 29000
+
+  StartSearchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /api/searches"
+      AuthorizationType: NONE
+      Target: !Join ["/", [integrations, !Ref ApiIntegration]]
+
+  UploadRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /api/uploads"
+      AuthorizationType: NONE
+      Target: !Join ["/", [integrations, !Ref ApiIntegration]]
+
+  SearchStatusRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "GET /api/searches/{searchId}"
+      AuthorizationType: NONE
+      Target: !Join ["/", [integrations, !Ref ApiIntegration]]
+
+  DeleteSearchRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "DELETE /api/searches/{searchId}"
+      AuthorizationType: NONE
+      Target: !Join ["/", [integrations, !Ref ApiIntegration]]
+
+  HttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    DependsOn:
+      - StartSearchRoute
+      - UploadRoute
+      - SearchStatusRoute
+      - DeleteSearchRoute
+    Properties:
+      ApiId: !Ref HttpApi
+      StageName: "$default"
+      AutoDeploy: true
+      DefaultRouteSettings:
+        ThrottlingBurstLimit: 4
+        ThrottlingRateLimit: 2
+
+  ApiInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ApiFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/*"
+
+  WorkflowInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TaskFunction
+      Principal: states.amazonaws.com
+      SourceArn: !Ref WorkflowStateMachine
+
+  ApiLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${ApiFunction}"
+      RetentionInDays: 7
+
+  TaskLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/lambda/${TaskFunction}"
+      RetentionInDays: 7
+
+Outputs:
+  ApiBaseUrl:
+    Description: Set CAREERSIGNAL_AWS_API_URL in the Cloudflare Worker to this HTTPS origin.
+    Value: !GetAtt HttpApi.ApiEndpoint
+  WorkflowStateMachineArn:
+    Description: CareerSignal Standard Step Functions state machine.
+    Value: !Ref WorkflowStateMachine
