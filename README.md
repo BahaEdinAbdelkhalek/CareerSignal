@@ -2,9 +2,18 @@
 
 ![CareerSignal cover](CareerSignal-Web/public/assets/CareerSignal_Cover_Centered.png)
 
-Node.js 24+ · Angular 20 · AWS Lambda · Step Functions · Cloudflare Worker · Demo uses fictional data
+<p>
+  <img alt="Node.js 24+" src="https://img.shields.io/badge/Node.js-24%2B-339933.svg?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img alt="Angular 20" src="https://img.shields.io/badge/Angular-20-DD0031.svg?style=for-the-badge&logo=angular&logoColor=white" />
+  <img alt="AWS Lambda" src="https://img.shields.io/badge/AWS-Lambda-FF9900.svg?style=for-the-badge&logo=awslambda&logoColor=white" />
+  <img alt="AWS Step Functions" src="https://img.shields.io/badge/AWS-Step%20Functions-FF4F8B.svg?style=for-the-badge&logo=amazonaws&logoColor=white" />
+  <img alt="Azure Functions v4" src="https://img.shields.io/badge/Azure%20Functions-v4-0062AD.svg?style=for-the-badge&logo=azurefunctions&logoColor=white" />
+  <img alt="Azure Durable Functions" src="https://img.shields.io/badge/Azure-Durable%20Functions-0062AD.svg?style=for-the-badge&logo=microsoftazure&logoColor=white" />
+  <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020.svg?style=for-the-badge&logo=cloudflare&logoColor=white" />
+  <img alt="Demo uses fictional data" src="https://img.shields.io/badge/Public%20Demo-Fictional%20Data-16865A.svg?style=for-the-badge" />
+</p>
 
-CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares one outreach draft per selected contact. It does not discover vacancies, verify that a company is hiring, or send email.
+CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares one outreach draft per selected contact. It has an AWS backend path on `main` and an Azure Functions/Durable Functions path on `azure`. It does not discover vacancies, verify that a company is hiring, or send email.
 
 ## Platform branches
 
