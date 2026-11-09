@@ -30,6 +30,25 @@ test("analysis normalization bounds fields and rejects invalid country codes", (
     assert.deepEqual(result.companyKeywords, ["Cloud Engineer", "Terraform", "Docker"]);
 });
 
+test("analysis normalization replaces candidate-role output with HR contact titles", () => {
+    const result = normalizeAnalysis({
+        candidateSummary: "Cloud engineering student",
+        skills: ["AWS"],
+        targetRoles: ["Cloud Engineer"],
+        companyKeywords: ["cloud computing"],
+        hrJobTitles: ["Software Engineer", "Cloud Engineer", "PFE Intern"],
+        countryCodes: ["FR"],
+        matchingCriteria: [],
+        gaps: []
+    });
+
+    assert.deepEqual(result.hrJobTitles, [
+        "Talent Acquisition", "Talent Acquisition Manager", "Recruiter", "Technical Recruiter",
+        "HR Manager", "Human Resources Manager", "People Operations", "HR Business Partner",
+        "Head of People", "Chief Human Resources Officer", "Campus Recruiter"
+    ]);
+});
+
 test("draft normalization uses verified contact identity and email instead of model claims", () => {
     const contacts = [{
         id: "person-1",

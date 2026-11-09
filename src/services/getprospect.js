@@ -1,5 +1,7 @@
 "use strict";
 
+const { getHrJobTitleSearchTerms } = require("./hr-titles");
+
 let apiKeyProvider = secretName => require("./key-vault").getSecret(secretName);
 
 const BASE_URL = "https://api.getprospect.com";
@@ -106,9 +108,7 @@ async function searchHrContacts({ companyIds, jobTitles, perPage = 100, maxPages
     const ids = [...new Set((companyIds || []).filter(Boolean).map(String))].slice(0, 100);
     if (!ids.length) return [];
 
-    const titles = [...new Set((jobTitles || [])
-        .map(value => String(value).trim())
-        .filter(value => value.length >= 2 && value.length <= 100))].slice(0, 100);
+    const titles = getHrJobTitleSearchTerms(jobTitles);
     const filters = {
         company: { id: { include: ids } },
         person_job_title: {

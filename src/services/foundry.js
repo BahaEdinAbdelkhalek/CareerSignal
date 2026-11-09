@@ -1,5 +1,7 @@
 "use strict";
 
+const { normalizeHrJobTitles } = require("./hr-titles");
+
 let chatJsonProvider = null;
 
 function setChatJsonProvider(provider) {
@@ -95,7 +97,7 @@ function normalizeAnalysis(result) {
         skills: cleanStringArray(result.skills, 40, 80),
         targetRoles: cleanStringArray(result.targetRoles, 15, 100),
         companyKeywords: cleanStringArray(result.companyKeywords, 8, 100),
-        hrJobTitles: cleanStringArray(result.hrJobTitles, 20, 100),
+        hrJobTitles: normalizeHrJobTitles(result.hrJobTitles),
         countryCodes: cleanStringArray(result.countryCodes, 20, 10).map(code => code.toUpperCase()).filter(code => /^[A-Z]{2}$/.test(code)),
         matchingCriteria: cleanStringArray(result.matchingCriteria, 20, 100),
         gaps: cleanStringArray(result.gaps, 20, 200)
@@ -118,6 +120,7 @@ async function analyseCv(cvText, preferences) {
         "Extract only information supported by the CV. Candidate preferences may guide targeting but must not be presented as qualifications.",
         "Return this exact shape: {\"candidateSummary\":string,\"skills\":[string],\"targetRoles\":[string],\"companyKeywords\":[string],\"hrJobTitles\":[string],\"countryCodes\":[string],\"matchingCriteria\":[string],\"gaps\":[string]}.",
         "companyKeywords must contain 1-8 meaningful company-search phrases, each 3-100 characters.",
+        "hrJobTitles must be HR/recruiting decision-maker titles for finding internship contacts, never candidate target roles or technical roles. Use recruiter, talent acquisition, campus recruiter, HR business partner, people operations, HR manager, or head of people titles. If uncertain, return an empty array.",
         "Use ISO-3166-1 alpha-2 country codes only when a country is explicitly included in preferences.",
         "Do not add generic skills merely because they are common in the target industry. Preserve uncertainty as a gap."
     ].join(" ");

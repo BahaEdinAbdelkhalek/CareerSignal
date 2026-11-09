@@ -32,6 +32,7 @@ def main():
         node_modules,
         REPOSITORY / "src" / "services" / "foundry.js",
         REPOSITORY / "src" / "services" / "getprospect.js",
+        REPOSITORY / "src" / "services" / "hr-titles.js",
         REPOSITORY / "src" / "services" / "key-vault.js",
         REPOSITORY / "src" / "services" / "matching.js",
     ]
