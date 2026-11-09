@@ -59,7 +59,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
               <div><dt>Start date</dt><dd>{{ preferences.startDate || 'Not specified' }}</dd></div>
               <div *ngIf="preferences.additionalRequirements"><dt>Requirements</dt><dd>{{ preferences.additionalRequirements }}</dd></div>
             </dl>
-            <label *ngIf="liveMode" class="privacy-consent"><input type="checkbox" [(ngModel)]="privacyAcknowledged" name="privacyAcknowledged"><span>This sends CV text to Azure AI Foundry. GetProspect searches companies and contacts and may enrich up to five emails. CV text is temporary; email drafts are not sent.</span></label>
+            <label *ngIf="liveMode" class="privacy-consent"><input type="checkbox" [(ngModel)]="privacyAcknowledged" name="privacyAcknowledged"><span>This uploads your CV to AWS for processing. CareerSignal sends CV text to the configured AI provider; GetProspect searches companies and contacts and may enrich up to five emails. Email drafts are not sent.</span></label>
             <div class="form-actions"><button class="button primary" type="button" (click)="runAnalysis()" [disabled]="busy || (liveMode && !privacyAcknowledged)">{{ busy ? 'Waiting for results' : 'Get results' }}</button></div>
           </div>
           <div *ngIf="busy" class="loading" role="status">{{ environmentMode ? 'Loading demo results…' : 'Waiting for workflow results…' }}</div>
@@ -67,7 +67,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
         </section>
 
         <section *ngIf="result" class="panel profile-panel">
-          <div class="panel-heading"><div><span class="section-kicker">SEARCH PROFILE</span><h2>Candidate</h2></div><button class="text-button" type="button" (click)="reset()">New search</button></div>
+          <div class="panel-heading"><div><h2>Candidate</h2></div><button class="text-button" type="button" (click)="reset()">New search</button></div>
           <p class="profile-summary">{{ result.analysis.candidateSummary }}</p>
           <small class="source-label">AI-generated summary</small>
           <div class="profile-section"><h3>Skills</h3><div class="tag-list"><span *ngFor="let item of result.analysis.skills">{{ item }}</span></div></div>
@@ -114,7 +114,8 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
           </div>
         </div>
 
-        <div *ngIf="!activeContact" class="review-finished"><div class="finished-mark">{{ keptContacts.size }}</div><h2>Contact review complete</h2><p>{{ keptContacts.size }} saved · {{ skippedContacts }} skipped</p><button class="button primary" type="button" (click)="restartReview()">Review again</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
+        <div *ngIf="result.contacts.length === 0" class="review-finished"><div class="finished-mark">0</div><h2>No HR contacts found</h2><p>CareerSignal found {{ result.companies.length }} companies, but no matching recruiter contacts. Try another search after checking your contact-provider access.</p><button class="button primary" type="button" (click)="reset()">Start a new search</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
+        <div *ngIf="result.contacts.length > 0 && !activeContact" class="review-finished"><div class="finished-mark">{{ keptContacts.size }}</div><h2>Contact review complete</h2><p>{{ keptContacts.size }} saved · {{ skippedContacts }} skipped</p><button class="button primary" type="button" (click)="restartReview()">Review again</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
 
         <section *ngIf="view==='analysis'" class="profile-extra"><h2>Profile signals</h2><div *ngFor="let item of result.analysis.companyKeywords">{{ item }}</div><button class="text-button" (click)="view='contacts'">Back to contacts</button></section>
       </section>
@@ -154,18 +155,29 @@ export class AppComponent {
 
   constructor(private readonly demo: DemoDataService, private readonly api: CareerSignalApiService) {
     this.liveMode = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('careersignal-live-mode') === 'true';
+    void this.api.handleAuthCallback().then(authenticated => {
+      if (authenticated) {
+        this.liveMode = true;
+        sessionStorage.setItem('careersignal-live-mode', 'true');
+      }
+    }).catch(error => {
+      this.error = error instanceof Error ? error.message : 'Cognito sign-in failed.';
+    });
   }
 
   toggleMode(): void {
     if (this.liveMode) {
       this.liveMode = false;
       this.privacyAcknowledged = false;
-      sessionStorage.removeItem('careersignal-live-mode');
+      this.api.signOut();
       return;
     }
     this.privacyAcknowledged = false;
-    sessionStorage.setItem('careersignal-live-mode', 'true');
-    window.location.assign('/api/access-login');
+    try {
+      this.api.signIn();
+    } catch (error) {
+      this.error = error instanceof Error ? error.message : 'Cognito is not configured.';
+    }
   }
 
   get roleList(): string[] { return this.rolesText.split(',').map(value => value.trim()).filter(Boolean); }
