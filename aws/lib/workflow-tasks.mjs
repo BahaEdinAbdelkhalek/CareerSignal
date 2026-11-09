@@ -205,7 +205,14 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
       }
 
       throw new Error('Unknown workflow action.');
-    } catch {
+    } catch (error) {
+      console.error('CareerSignal workflow task failed', {
+        action,
+        errorName: error?.name || 'Error',
+        errorMessage: typeof error?.message === 'string' ? error.message.slice(0, 300) : 'Unknown error',
+        errorCode: typeof error?.code === 'string' ? error.code : undefined,
+        statusCode: Number.isInteger(error?.$metadata?.httpStatusCode) ? error.$metadata.httpStatusCode : undefined,
+      });
       if (action === 'markFailed') throw new Error('Could not record workflow failure.');
       throw new Error('CareerSignal workflow task failed.');
     }
