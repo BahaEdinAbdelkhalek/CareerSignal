@@ -87,7 +87,6 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
 
       <section *ngIf="result" class="panel discovery-panel">
         <div class="discovery-heading"><div><h1>Review contacts</h1></div><div class="review-count"><strong>{{ reviewIndex < result.contacts.length ? reviewIndex + 1 : result.contacts.length }}</strong><span>of {{ result.contacts.length }}</span></div></div>
-        <div class="swipe-track"><span [class.done]="reviewIndex > 0">Profile</span><i [class.done]="reviewIndex > 0"></i><span [class.done]="reviewIndex > 0">Companies</span><i [class.done]="reviewIndex > 0"></i><span class="current">Contacts</span></div>
 
         <div *ngIf="activeContact as person" class="contact-stage">
           <article class="swipe-card" [class.dragging]="swipeOffset !== 0" [style.transform]="cardTransform" (pointerdown)="startSwipe($event)" (pointermove)="moveSwipe($event)" (pointerup)="endSwipe($event)" (pointercancel)="cancelSwipe()">
@@ -96,12 +95,12 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
             <h2>{{ person.fullName || 'Name unavailable' }}</h2>
             <p class="contact-title">{{ person.title || 'Title unavailable' }}</p>
             <div class="company-chip"><span>{{ initials(person.company) }}</span><div><strong>{{ person.company || 'Company unavailable' }}</strong><small>{{ companyIndustry(person) }}</small></div></div>
-            <div class="match-reasons" *ngIf="person.matchReasons?.length"><span class="card-kicker">MATCH REASONS</span><p *ngFor="let reason of person.matchReasons">{{ reason }}</p></div>
+
             <a *ngIf="person.linkedinUrl" class="linkedin-link" [href]="person.linkedinUrl" target="_blank" rel="noreferrer">View LinkedIn profile</a>
             <div class="swipe-stamp keep" *ngIf="swipeOffset > 40">SAVE</div><div class="swipe-stamp pass" *ngIf="swipeOffset < -40">PASS</div>
           </article>
 
-          <div class="swipe-actions"><button class="decision-button pass-button" type="button" (click)="decide('pass')" aria-label="Skip contact">Skip</button><span>Swipe to review</span><button class="decision-button keep-button" type="button" (click)="decide('keep')">Save contact</button></div>
+          <div class="swipe-actions"><button class="decision-button pass-button" type="button" (click)="decide('pass')" aria-label="Skip contact" title="Skip contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><button class="decision-button keep-button" type="button" (click)="decide('keep')" aria-label="Save contact" title="Save contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button></div>
 
           <div class="reveal-area">
             <div class="destination-row"><label for="destination-address">To</label><input id="destination-address" [ngModel]="revealedDraft?.email || ''" (ngModelChange)="updateDraftEmail($event)" [ngModelOptions]="{standalone:true}" [placeholder]="revealedDraft ? 'Email unavailable' : 'Address hidden'" [readonly]="!revealedDraft"><button class="reveal-button" type="button" (click)="revealDraft(person)">{{ revealedDraft ? 'Hide draft' : 'Reveal' }}</button></div>
