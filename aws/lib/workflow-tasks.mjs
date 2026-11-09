@@ -88,9 +88,12 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
 
       if (action === 'discoverCompanies') {
         const profile = await storage.getJson(event.analysisKey);
-        const keywords = Array.isArray(profile.analysis.companyKeywords) && profile.analysis.companyKeywords.length
-          ? profile.analysis.companyKeywords
-          : ['software development', 'cloud computing', 'IT services'];
+        const keywords = [...new Set([
+          ...(profile.analysis.companyKeywords || []),
+          ...(profile.analysis.skills || []),
+          ...(profile.analysis.targetRoles || []),
+        ].filter(value => typeof value === 'string').map(value => value.trim()).filter(value => value.length >= 3 && value.length <= 100))].slice(0, 20);
+        if (!keywords.length) keywords.push('software development', 'cloud computing', 'IT services');
         const countryCodes = Array.isArray(profile.analysis.countryCodes) && profile.analysis.countryCodes.length
           ? profile.analysis.countryCodes
           : (profile.preferences.countryCodes || []);
