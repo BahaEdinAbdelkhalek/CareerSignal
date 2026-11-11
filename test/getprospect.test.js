@@ -62,7 +62,7 @@ test("searches HR contacts by selected company domains and people locations", as
         "Talent Acquisition Partner", "Talent Acquisition Director"
     ]);
     assert.equal(request.filters.person_job_title.match_mode, "CONTAINS");
-    assert.equal(request.filters.max_person_per_company, 2);
+    assert.equal(request.filters.max_person_per_company, 5);
 });
 
 test("searchPages follows API pagination metadata but respects the configured cap", async () => {

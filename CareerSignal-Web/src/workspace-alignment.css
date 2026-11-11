@@ -8,4 +8,4 @@
 .company-identity{display:flex;align-items:center;gap:11px;min-width:0}
 .company-identity>img,.company-monogram{width:34px;height:34px;flex:none;object-fit:contain}
 .company-monogram{display:grid;place-items:center;background:#f1f3f1;color:#59635b;border-radius:4px;font-size:10px;font-weight:600}
-.company-identity h2{overflow:hidden;text-overflow:ellipsis}
+.company-identity h2{overflow:hidden;text-overflow:ellipsis}.review-finished.no-contacts .finished-mark{background:transparent;color:inherit;border-radius:0}

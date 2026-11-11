@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 
-const MAX_ENRICHMENTS = 5;
+const MAX_ENRICHMENTS = 25;
 const MAX_TARGET_COMPANIES = 5;
 
 function ownerHash(ownerId) {
@@ -19,13 +19,21 @@ function getCompanyLogo(company) {
   return null;
 }
 
+function normalizeDomain(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const input = value.trim();
+    const url = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(input) ? input : `https://${input}`);
+    return url.hostname.replace(/^www\./i, '').toLowerCase() || null;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeCompany(company) {
   const location = company.location || company.headquarters || null;
   const website = company.website || company.website_url || null;
-  const rawDomain = company.domain || company.website_domain || website;
-  const domain = typeof rawDomain === 'string'
-    ? rawDomain.trim().toLowerCase().replace('https://', '').replace('http://', '').replace(/^www\./, '').split('/')[0] || null
-    : null;
+  const domain = normalizeDomain(company.domain || company.website_domain || website);
   return {
     id: company.id,
     name: company.name || company.company_name || 'Unknown company',
@@ -48,6 +56,7 @@ function normalizeContact(person) {
     (Array.isArray(person.positions) ? person.positions[0] : {}) || {};
   const company = position.company || person.company || {};
   const email = person.email && typeof person.email === 'object' ? person.email : {};
+  const companyDomain = normalizeDomain(company.domain || company.website_domain || company.website || person.company_domain || person.website_domain);
   return {
     id: person.id || null,
     fullName: person.full_name || [person.first_name, person.last_name].filter(Boolean).join(' '),
@@ -57,6 +66,7 @@ function normalizeContact(person) {
     title: position.job_title || person.job_title || person.title || null,
     company: company.name || person.company_name || null,
     companyId: company.id || person.company_id || null,
+    companyDomain,
     companyLogoUrl: getCompanyLogo(company) || getCompanyLogo(person),
     hasEmail: Boolean(person.has_email || email.status === 'valid' || person.email_status === 'valid'),
     email: email.status === 'valid' ? (email.address || null) : null,
@@ -162,10 +172,11 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
           maxPages: 3,
         });
         const contacts = prospect.selectTopContacts(
-          discovered.map(normalizeContact).filter(contact => contact.id && contact.fullName && contact.title),
+          discovered.map(person => ({ ...normalizeContact(person), isRequestedTarget: true }))
+            .filter(contact => contact.id && contact.fullName && contact.title),
           companies,
           profile.analysis,
-          { limit: 5, minimumScore: 50, minimumCompanyScore: 20, maxPerCompany: 2, contactTypes },
+          { limit: 25, minimumScore: 50, minimumCompanyScore: 20, maxPerCompany: 5, contactTypes },
         );
         const contactsKey = stageKey(ownerId, searchId, 'contacts');
         await storage.putJson(contactsKey, contacts);

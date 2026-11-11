@@ -49,7 +49,7 @@ function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'com
     },
     scoreCompanies(companies) { return companies.map(company => ({ ...company, fitScore: 90, matchReasons: ['software development'] })); },
     async searchHrContacts(options) { return searchHrContacts(options); },
-    selectTopContacts(values) { return values.slice(0, 5); },
+    selectTopContacts(values) { return values.slice(0, 25); },
     enrichPerson,
   };
 }
@@ -74,7 +74,7 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
     id: `person-${index}`,
     full_name: `Person ${index}`,
     title: 'Talent Acquisition Manager',
-    company: { id: 'company-1', name: 'Example Software', logo: { url: 'https://logos.example/example.png' } },
+    company: { id: 'company-1', name: 'Example Software', domain: 'https://www.example-tunisia.test/team', logo: { url: 'https://logos.example/example.png' } },
   }));
   const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', domain: 'example.test', description: 'Software development' }]; }, searchHrContacts: async options => { contactSearch = options; return contacts; } }), model, extractPdfText: async () => 'unused' });
 
@@ -94,17 +94,18 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
   assert.deepEqual(contactSearch.companyDomains, ['example.test']);
   assert.deepEqual(contactSearch.personLocations, ['France']);
   assert.deepEqual(contactSearch.contactTypes, ['Technical Recruiter']);
-  assert.deepEqual(modelCalls[1], ['drafts', 5]);
+  assert.deepEqual(modelCalls[1], ['drafts', 7]);
   assert.deepEqual(storage.completed, {
     ownerId: OWNER,
     searchId: SEARCH_ID,
     resultKey: `results/${await import('node:crypto').then(({ createHash }) => createHash('sha256').update(OWNER).digest('hex'))}/${SEARCH_ID}/result.json`,
   });
   const result = storage.objects.get(storage.completed.resultKey);
-  assert.equal(result.contacts.length, 5);
+  assert.equal(result.contacts.length, 7);
   assert.equal(result.contacts[0].companyLogoUrl, 'https://logos.example/example.png');
-  assert.equal(result.summary.contactsShortlisted, 5);
-  assert.equal(result.summary.draftsGenerated, 5);
+  assert.equal(result.contacts[0].companyDomain, 'example-tunisia.test');
+  assert.equal(result.summary.contactsShortlisted, 7);
+  assert.equal(result.summary.draftsGenerated, 7);
 });
 
 test('deletes the temporary uploaded PDF after analysis, including failed analysis', async () => {
@@ -123,8 +124,8 @@ test('deletes the temporary uploaded PDF after analysis, including failed analys
   assert.equal(deletedPdf, true);
 });
 
-test('sequentially limits email enrichment to five contacts', async () => {
-  const contacts = Array.from({ length: 7 }, (_, index) => ({ id: `p${index}`, fullName: `Person ${index}`, title: 'Recruiter', company: 'Example' }));
+test('sequentially limits email enrichment to 25 contacts', async () => {
+  const contacts = Array.from({ length: 27 }, (_, index) => ({ id: `p${index}`, fullName: `Person ${index}`, title: 'Recruiter', company: 'Example' }));
   const storage = createStorage({ 'contacts.json': contacts });
   let active = 0;
   let maximumActive = 0;
@@ -145,6 +146,6 @@ test('sequentially limits email enrichment to five contacts', async () => {
 
   const result = await task({ action: 'enrichContacts', ownerId: OWNER, searchId: SEARCH_ID, contactsKey: 'contacts.json' });
   assert.deepEqual(result, { enrichedKey: `jobs/${await import('node:crypto').then(({ createHash }) => createHash('sha256').update(OWNER).digest('hex'))}/${SEARCH_ID}/enriched-contacts.json` });
-  assert.equal(attempts, 5);
+  assert.equal(attempts, 25);
   assert.equal(maximumActive, 1);
 });

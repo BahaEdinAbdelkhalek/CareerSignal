@@ -139,7 +139,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
           </article>
         </div>
 
-        <div *ngIf="result.contacts.length === 0" class="review-finished"><div class="finished-mark">0</div><h2>No HR contacts found</h2><p>CareerSignal found {{ result.companies.length }} companies, but no matching recruiter contacts. Try another search after checking your contact-provider access.</p><button class="button primary" type="button" (click)="reset()">Start a new search</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
+        <div *ngIf="result.contacts.length === 0" class="review-finished no-contacts"><div class="finished-mark">0</div><h2>No HR contacts found</h2><p>CareerSignal found {{ result.companies.length }} companies, but no matching recruiter contacts. Try another search after checking your contact-provider access.</p><button class="button primary" type="button" (click)="reset()">Start a new search</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
         <div *ngIf="result.contacts.length > 0 && !activeContact" class="review-finished"><div class="finished-mark">{{ keptContacts.size }}</div><h2>Contact review complete</h2><p>{{ keptContacts.size }} saved · {{ skippedContacts }} skipped</p><button class="button primary" type="button" (click)="restartReview()">Review again</button><button class="text-button" type="button" (click)="view='analysis'">View profile signals</button></div>
 
         <section *ngIf="view==='analysis'" class="profile-extra"><h2>Profile signals</h2><div *ngFor="let item of result.analysis.companyKeywords">{{ item }}</div><button class="text-button" (click)="view='contacts'">Back to contacts</button></section>
@@ -363,15 +363,20 @@ export class AppComponent {
     const personLogo = person.companyLogoUrl ? this.secureLogoUrl(person.companyLogoUrl) : null;
     if (personLogo) return personLogo;
     const company = this.matchedCompany(person);
-    return company ? this.companyLogoUrlFor(company) : null;
+    const matchedLogo = company ? this.companyLogoUrlFor(company) : null;
+    return matchedLogo || (person.companyDomain ? this.companyDomainLogoUrl(person.companyDomain) : null);
   }
   companyLogoUrlFor(company: Company): string | null {
     const providerLogo = company.logoUrl ? this.secureLogoUrl(company.logoUrl) : null;
     if (providerLogo) return providerLogo;
-    const website = company.domain || company.website;
-    if (!website) return null;
+    return this.companyDomainLogoUrl(company.domain || company.website);
+  }
+  private companyDomainLogoUrl(value?: string | null): string | null {
+    if (!value) return null;
     try {
-      const host = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./i, '');
+      const input = value.trim();
+      const hostname = new URL(input.includes('://') ? input : `https://${input}`).hostname.toLowerCase();
+      const host = hostname.startsWith('www.') ? hostname.slice(4) : hostname;
       return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128` : null;
     } catch { return null; }
   }

@@ -41,10 +41,10 @@ df.app.activity("HRContactDiscovery", {
 
         const contacts = discovered.map(mapContact).filter(contact => contact.id && contact.fullName && contact.title);
         return selectTopContacts(contacts, companies, analysis, {
-            limit: 5,
+            limit: 25,
             minimumScore: 50,
             minimumCompanyScore: 20,
-            maxPerCompany: 2,
+            maxPerCompany: 5,
             contactTypes
         });
     }

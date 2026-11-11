@@ -87,6 +87,44 @@ test("contact selection allows HR contacts at explicitly prioritized employers",
     assert.ok(selected[0].matchReasons.includes("Priority employer"));
 });
 
+test("keeps requested-category contacts at regional company entities", () => {
+    const selected = selectTopContacts([
+        { id: "p1", title: "Talent Development Manager", companyId: "pwc-tunisia", company: "PwC Tunisia", isRequestedTarget: true }
+    ], [
+        { id: "pwc-global", name: "PwC", fitScore: 85, isRequestedTarget: true }
+    ], {}, { contactTypes: ["Learning & Development"] });
+
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].scoreBreakdown.hrRoleRelevance, 100);
+    assert.equal(selected[0].isPriorityTarget, true);
+});
+
+test("selects up to five contacts from each of five requested companies", () => {
+    const companies = Array.from({ length: 5 }, (_, index) => ({
+        id: `c${index}`,
+        name: `Company ${index}`,
+        fitScore: 90,
+        isRequestedTarget: true
+    }));
+    const contacts = companies.flatMap(company => Array.from({ length: 7 }, (_, index) => ({
+        id: `${company.id}-p${index}`,
+        title: "HR Business Partner",
+        company: company.name,
+        companyId: company.id
+    })));
+
+    const selected = selectTopContacts(contacts, companies, {}, {
+        limit: 25,
+        maxPerCompany: 5,
+        contactTypes: ["HR Business Partner"]
+    });
+
+    assert.equal(selected.length, 25);
+    for (const company of companies) {
+        assert.equal(selected.filter(contact => contact.companyId === company.id).length, 5);
+    }
+});
+
 test("contact selection rejects non-HR titles and weak company matches", () => {
     const selected = selectTopContacts([
         { id: "p1", title: "Software Engineer", companyId: "c1", company: "Cloud Co" },

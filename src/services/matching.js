@@ -172,10 +172,16 @@ function hrTitleSignal(title) {
     return 0;
 }
 
-function scoreContact(contact, companyById, analysis = {}) {
+function scoreContact(contact, companyById, analysis = {}, requestedTitles = []) {
+    const normalizedTitle = normalizeText(contact.title);
+    const titleTokens = new Set(tokenize(normalizedTitle));
+    const requestedRoleScore = Math.max(0, ...requestedTitles.map(title =>
+        termSimilarity(title, normalizedTitle, titleTokens) * 100
+    ));
     const roleScore = Math.max(
         hrTitleSignal(contact.title),
-        scoreTermGroup(analysis.hrJobTitles, contact.title).score || 0
+        scoreTermGroup(analysis.hrJobTitles, contact.title).score || 0,
+        requestedRoleScore
     );
     const company = companyById.get(String(contact.companyId || "")) ||
         [...companyById.values()].find(item =>
@@ -183,7 +189,7 @@ function scoreContact(contact, companyById, analysis = {}) {
         );
     const companyScore = company ? Number(company.fitScore) || 0 : 0;
     const emailScore = contact.hasEmail || contact.email ? 100 : 0;
-    const isPriorityTarget = Boolean(company?.isPriorityTarget);
+    const isPriorityTarget = Boolean(company?.isPriorityTarget || contact.isRequestedTarget);
     const fitScore = Math.round((roleScore * 0.65) + (companyScore * 0.30) + (emailScore * 0.05));
 
     const matchReasons = [];
@@ -207,10 +213,10 @@ function scoreContact(contact, companyById, analysis = {}) {
 }
 
 function selectTopContacts(contacts, companies, analysis = {}, options = {}) {
-    const limit = Math.max(1, Math.min(5, Number(options.limit) || 5));
+    const limit = Math.max(1, Math.min(25, Number(options.limit) || 25));
     const minimumScore = Number.isFinite(options.minimumScore) ? options.minimumScore : 50;
     const minimumCompanyScore = Number.isFinite(options.minimumCompanyScore) ? options.minimumCompanyScore : 10;
-    const maxPerCompany = Math.max(1, Number(options.maxPerCompany) || 2);
+    const maxPerCompany = Math.max(1, Math.min(5, Number(options.maxPerCompany) || 5));
     const requestedContactTypes = Array.isArray(options.contactTypes) ? options.contactTypes : [];
     const requestedTitles = requestedContactTypes.length ? getHrJobTitleSearchTerms(requestedContactTypes) : [];
     const companyById = new Map((companies || []).map(company => [String(company.id), company]));
@@ -224,7 +230,7 @@ function selectTopContacts(contacts, companies, analysis = {}, options = {}) {
             seen.add(key);
             return true;
         })
-        .map(contact => scoreContact(contact, companyById, analysis))
+        .map(contact => scoreContact(contact, companyById, analysis, requestedTitles))
         .filter(contact =>
             contact.fitScore >= minimumScore &&
             contact.scoreBreakdown.hrRoleRelevance >= 70 &&

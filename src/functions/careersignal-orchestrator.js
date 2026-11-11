@@ -23,7 +23,7 @@ df.app.orchestration("CareerSignalOrchestrator", function* (context) {
     });
 
     const enrichedContacts = yield context.df.callActivity("EmailEnrichment", {
-        contacts: (contacts || []).slice(0, 5)
+        contacts: (contacts || []).slice(0, 25)
     });
 
     const drafts = yield context.df.callActivity("FoundryActivity", {

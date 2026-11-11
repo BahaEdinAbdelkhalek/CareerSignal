@@ -143,7 +143,7 @@ async function searchHrContacts({ companyIds, companyDomains, personLocations, j
             include: titles,
             match_mode: "CONTAINS"
         },
-        max_person_per_company: 2
+        max_person_per_company: 5
     };
     const locations = [...new Set((personLocations || [])
         .map(value => String(value).trim())

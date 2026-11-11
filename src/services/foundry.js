@@ -169,7 +169,7 @@ function normalizeDraftResults(result, contacts) {
 }
 
 async function createDrafts({ analysis, preferences, companies, contacts }) {
-    const selectedContacts = (contacts || []).slice(0, 5);
+    const selectedContacts = (contacts || []).slice(0, 25);
     if (!selectedContacts.length) return { results: [] };
 
     const system = [

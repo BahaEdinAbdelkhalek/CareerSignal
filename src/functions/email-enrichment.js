@@ -3,7 +3,7 @@
 const df = require("durable-functions");
 const { enrichPerson } = require("../services/getprospect");
 
-const MAX_ENRICHMENTS = 5;
+const MAX_ENRICHMENTS = 25;
 
 function getEmail(person) {
     const email = person?.email;
