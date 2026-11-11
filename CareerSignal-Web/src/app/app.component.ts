@@ -53,7 +53,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
               <div class="company-options" *ngIf="showCompanyOptions && companyResults.length" role="listbox" aria-label="Company search results">
                 <button type="button" role="option" *ngFor="let company of companyResults" (click)="selectCompany(company)"><span class="company-picker-logo"><span>{{ companyInitials(company.name) }}</span><img *ngIf="companyLogoUrlFor(company) as logoUrl" [src]="logoUrl" alt="" loading="lazy" (error)="$any($event.target).hidden=true"></span><span class="company-option-copy"><strong>{{ company.name }}</strong><small>{{ company.industry || company.domain || company.website || 'Company' }}</small></span></button>
               </div>
-              <small class="targeting-hint">{{ liveMode ? 'Search GetProspect and select the matching company.' : 'Switch to Live mode to search GetProspect and load company logos.' }}</small>
+              <small *ngIf="!liveMode" class="targeting-hint">Switch to Live mode to search GetProspect and load company logos.</small>
               <div *ngIf="companyLookupError" class="error-text" role="alert">{{ companyLookupError }}</div>
               <div *ngIf="targetingError" class="error-text" role="alert">{{ targetingError }}</div>
             </div>
@@ -103,7 +103,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
           <div class="profile-section"><h3>Skills</h3><div class="tag-list"><span *ngFor="let item of result.analysis.skills">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Target roles</h3><div class="tag-list"><span *ngFor="let item of result.analysis.targetRoles">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Search preferences</h3><p>Companies: {{ selectedCompanyNames.join(', ') }}<br>People: {{ selectedContactTypes.join(', ') }}<br>{{ countryList.join(', ') || 'Countries not specified' }}<span *ngIf="preferences.internshipDuration"> · {{ preferences.internshipDuration }}</span></p></div>
-          <div class="profile-section gaps" *ngIf="result.analysis.gaps.length"><h3>Gaps to review</h3><ul><li *ngFor="let item of result.analysis.gaps">{{ item }}</li></ul></div>
+
 
         </section>
       </aside>
@@ -348,24 +348,17 @@ export class AppComponent {
 
   private matchedCompany(person: Contact) { return this.result?.companies.find(company => company.id === person.companyId || company.name === person.company); }
   companyLogoUrl(person: Contact): string | null {
+    if (person.companyLogoUrl) return this.secureLogoUrl(person.companyLogoUrl);
     const company = this.matchedCompany(person);
     return company ? this.companyLogoUrlFor(company) : null;
   }
   companyLogoUrlFor(company: Company): string | null {
-    if (company.logoUrl) {
-      try {
-        const logo = new URL(company.logoUrl);
-        if (logo.protocol === 'https:' || logo.protocol === 'http:') {
-          logo.protocol = 'https:';
-          return logo.href;
-        }
-      } catch { /* Fall back to the company's website icon. */ }
-    }
-    const website = company.domain || company.website;
-    if (!website) return null;
+    return company.logoUrl ? this.secureLogoUrl(company.logoUrl) : null;
+  }
+  private secureLogoUrl(value: string): string | null {
     try {
-      const host = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./i, '');
-      return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128` : null;
+      const logo = new URL(value);
+      return logo.protocol === 'https:' || logo.protocol === 'http:' ? (logo.protocol = 'https:', logo.href) : null;
     } catch { return null; }
   }
   companyInitials(name?: string): string { return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join('').toUpperCase(); }
