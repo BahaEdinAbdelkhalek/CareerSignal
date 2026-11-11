@@ -109,8 +109,8 @@ async function searchCompanies({ keywords = [], companyNames = [], countryCodes 
         searches.push(searchPages("/v2/companies/search", { filters }, safePageSize, maxPages, postRequest));
     }
     if (cleanCompanyNames.length) {
+        // Selected employers should not be excluded because their headquarters are outside the candidate's target country.
         const filters = { company: { name: { include: cleanCompanyNames } } };
-        if (countries.length) filters.company_country = { include: countries };
         const nameSearchPages = Math.max(1, Math.min(2, Number(maxPages) || 2));
         searches.push(searchPages("/v2/companies/search", { filters }, safePageSize, nameSearchPages, postRequest));
     }
@@ -125,21 +125,30 @@ async function searchCompanies({ keywords = [], companyNames = [], countryCodes 
     });
 }
 
-async function searchHrContacts({ companyIds, jobTitles, contactTypes, perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES, postRequest = post }) {
+async function searchHrContacts({ companyIds, companyDomains, personLocations, jobTitles, contactTypes, perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES, postRequest = post }) {
     const ids = [...new Set((companyIds || []).filter(Boolean).map(String))].slice(0, 100);
-    if (!ids.length) return [];
+    const domains = [...new Set((companyDomains || [])
+        .map(value => String(value).trim().toLowerCase().replace("https://", "").replace("http://", "").replace(/^www\./, "").split("/")[0])
+        .filter(value => value.includes(".") && /^[a-z0-9.-]+$/.test(value)))].slice(0, 100);
+    if (!domains.length && !ids.length) return [];
 
     const requestedTypes = Array.isArray(contactTypes) && contactTypes.length ? contactTypes : jobTitles;
     const titles = getHrJobTitleSearchTerms(requestedTypes);
     if (!titles.length) throw new Error("Choose at least one valid HR or recruiting contact type.");
     const filters = {
-        company: { id: { include: ids } },
+        company: domains.length
+            ? { domain: { include: domains, match_mode: "ORGANIZATION" } }
+            : { id: { include: ids } },
         person_job_title: {
             include: titles,
             match_mode: "CONTAINS"
         },
         max_person_per_company: 2
     };
+    const locations = [...new Set((personLocations || [])
+        .map(value => String(value).trim())
+        .filter(value => value.length >= 2 && value.length <= 100))].slice(0, 20);
+    if (locations.length) filters.person_location = { include: locations };
 
     const safePageSize = [25, 50, 100].includes(perPage) ? perPage : 100;
     const payload = await searchPages("/v2/people/search", {

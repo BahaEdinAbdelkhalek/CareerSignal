@@ -20,8 +20,9 @@ test("company search merges CV-keyword matches with exact priority-employer matc
 
     assert.equal(requests.length, 2);
     assert.deepEqual(requests[0].filters.company_keywords.include, ["cloud infrastructure"]);
+    assert.deepEqual(requests[0].filters.company_country.include, ["FR"]);
     assert.deepEqual(requests[1].filters.company.name.include, ["ALTEN", "Safran"]);
-    assert.deepEqual(requests.map(request => request.filters.company_country.include), [["FR"], ["FR"]]);
+    assert.equal(requests[1].filters.company_country, undefined);
     assert.deepEqual(results.map(company => company.id), ["alten-id", "cloud-id"]);
 });
 
@@ -40,10 +41,12 @@ test("caps exact company suggestion searches to the requested page count", async
     assert.deepEqual(requestedPages, [1]);
 });
 
-test("searches HR contacts at target companies using only the selected people types", async () => {
+test("searches HR contacts by selected company domains and people locations", async () => {
     let request;
     await searchHrContacts({
         companyIds: ["company-1"],
+        companyDomains: ["https://www.pwc.com/global/en.html", "ey.com"],
+        personLocations: ["Tunisia", "Morocco"],
         contactTypes: ["Talent Acquisition"],
         postRequest: async (_path, body) => {
             request = body;
@@ -51,7 +54,9 @@ test("searches HR contacts at target companies using only the selected people ty
         }
     });
 
-    assert.deepEqual(request.filters.company.id.include, ["company-1"]);
+    assert.deepEqual(request.filters.company.domain.include, ["pwc.com", "ey.com"]);
+    assert.equal(request.filters.company.domain.match_mode, "ORGANIZATION");
+    assert.deepEqual(request.filters.person_location.include, ["Tunisia", "Morocco"]);
     assert.deepEqual(request.filters.person_job_title.include, [
         "Talent Acquisition", "Talent Acquisition Manager", "Talent Acquisition Specialist",
         "Talent Acquisition Partner", "Talent Acquisition Director"

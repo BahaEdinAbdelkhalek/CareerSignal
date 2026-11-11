@@ -13,11 +13,16 @@ function stageKey(ownerId, searchId, name) {
 
 function normalizeCompany(company) {
   const location = company.location || company.headquarters || null;
+  const website = company.website || company.website_url || null;
+  const rawDomain = company.domain || company.website_domain || website;
+  const domain = typeof rawDomain === 'string'
+    ? rawDomain.trim().toLowerCase().replace('https://', '').replace('http://', '').replace(/^www\./, '').split('/')[0] || null
+    : null;
   return {
     id: company.id,
     name: company.name || company.company_name || 'Unknown company',
-    website: company.website || company.website_url || null,
-    domain: company.domain || company.website_domain || null,
+    website,
+    domain,
     logoUrl: company.logo || company.logo_url || company.logoUrl || company.company_logo_url || company.image_url || null,
     industry: company.industry || company.industries || null,
     description: company.description || company.company_description || null,
@@ -130,8 +135,19 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
         }
         const contactTypes = Array.isArray(profile.preferences.contactTypes) ? profile.preferences.contactTypes : [];
         if (!contactTypes.length) throw new Error('Choose at least one HR or recruiting contact type.');
+        const companyDomains = companies.map(company => company.domain).filter(Boolean);
+        const countryCodes = Array.isArray(profile.analysis.countryCodes) && profile.analysis.countryCodes.length
+          ? profile.analysis.countryCodes
+          : (profile.preferences.countryCodes || []);
+        const countryNames = new Intl.DisplayNames(['en'], { type: 'region' });
+        const personLocations = [...new Set(countryCodes
+          .filter(code => typeof code === 'string' && /^[A-Z]{2}$/i.test(code))
+          .map(code => countryNames.of(code.toUpperCase()))
+          .filter(name => name && name !== 'Unknown Region'))];
         const discovered = await prospect.searchHrContacts({
           companyIds,
+          companyDomains,
+          personLocations,
           contactTypes,
           perPage: 100,
           maxPages: 3,

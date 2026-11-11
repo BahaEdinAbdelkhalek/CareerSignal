@@ -39,7 +39,7 @@ const analysis = {
   gaps: [],
 };
 
-function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'company-1', name: 'Example Software', description: 'Software development' }], searchHrContacts = async () => contacts, enrichPerson = async contact => ({
+function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'company-1', name: 'Example Software', domain: 'example.test', description: 'Software development' }], searchHrContacts = async () => contacts, enrichPerson = async contact => ({
   full_name: contact.fullName,
   email: { address: `${contact.id}@example.test`, status: 'valid' },
 }) } = {}) {
@@ -76,7 +76,7 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
     title: 'Talent Acquisition Manager',
     company: { id: 'company-1', name: 'Example Software' },
   }));
-  const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', description: 'Software development' }]; }, searchHrContacts: async options => { contactSearch = options; return contacts; } }), model, extractPdfText: async () => 'unused' });
+  const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', domain: 'example.test', description: 'Software development' }]; }, searchHrContacts: async options => { contactSearch = options; return contacts; } }), model, extractPdfText: async () => 'unused' });
 
   const analysisOutput = await task({ action: 'analyse', ownerId: OWNER, searchId: SEARCH_ID, inputKey: 'jobs/input.json' });
   assert.deepEqual(Object.keys(analysisOutput), ['analysisKey']);
@@ -91,6 +91,8 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
   assert.deepEqual(modelCalls[0].slice(1), ['fictional CV text', preferences]);
   assert.deepEqual(companySearch, { companyNames: ['ALTEN', 'Safran'], countryCodes: ['FR'], perPage: 100, maxPages: 2 });
   assert.deepEqual(contactSearch.companyIds, ['company-1']);
+  assert.deepEqual(contactSearch.companyDomains, ['example.test']);
+  assert.deepEqual(contactSearch.personLocations, ['France']);
   assert.deepEqual(contactSearch.contactTypes, ['Technical Recruiter']);
   assert.deepEqual(modelCalls[1], ['drafts', 5]);
   assert.deepEqual(storage.completed, {
