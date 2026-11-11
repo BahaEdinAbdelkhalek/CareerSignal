@@ -74,7 +74,7 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
     id: `person-${index}`,
     full_name: `Person ${index}`,
     title: 'Talent Acquisition Manager',
-    company: { id: 'company-1', name: 'Example Software' },
+    company: { id: 'company-1', name: 'Example Software', logo: { url: 'https://logos.example/example.png' } },
   }));
   const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', domain: 'example.test', description: 'Software development' }]; }, searchHrContacts: async options => { contactSearch = options; return contacts; } }), model, extractPdfText: async () => 'unused' });
 
@@ -102,6 +102,7 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
   });
   const result = storage.objects.get(storage.completed.resultKey);
   assert.equal(result.contacts.length, 5);
+  assert.equal(result.contacts[0].companyLogoUrl, 'https://logos.example/example.png');
   assert.equal(result.summary.contactsShortlisted, 5);
   assert.equal(result.summary.draftsGenerated, 5);
 });

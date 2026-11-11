@@ -11,6 +11,14 @@ function stageKey(ownerId, searchId, name) {
   return `jobs/${ownerHash(ownerId)}/${searchId}/${name}.json`;
 }
 
+function getCompanyLogo(company) {
+  const logo = company?.logo || company?.logo_url || company?.logoUrl || company?.company_logo ||
+    company?.company_logo_url || company?.image_url;
+  if (typeof logo === 'string') return logo;
+  if (logo && typeof logo === 'object') return logo.url || logo.original || logo.src || null;
+  return null;
+}
+
 function normalizeCompany(company) {
   const location = company.location || company.headquarters || null;
   const website = company.website || company.website_url || null;
@@ -23,7 +31,7 @@ function normalizeCompany(company) {
     name: company.name || company.company_name || 'Unknown company',
     website,
     domain,
-    logoUrl: company.logo || company.logo_url || company.logoUrl || company.company_logo_url || company.image_url || null,
+    logoUrl: getCompanyLogo(company),
     industry: company.industry || company.industries || null,
     description: company.description || company.company_description || null,
     specialties: company.specialties || null,
@@ -49,6 +57,7 @@ function normalizeContact(person) {
     title: position.job_title || person.job_title || person.title || null,
     company: company.name || person.company_name || null,
     companyId: company.id || person.company_id || null,
+    companyLogoUrl: getCompanyLogo(company) || getCompanyLogo(person),
     hasEmail: Boolean(person.has_email || email.status === 'valid' || person.email_status === 'valid'),
     email: email.status === 'valid' ? (email.address || null) : null,
     emailStatus: email.status || person.email_status || null,

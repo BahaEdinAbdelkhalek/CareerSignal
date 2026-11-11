@@ -42,7 +42,7 @@ test('returns safe company suggestions from the authenticated provider lookup', 
     return [{
       id: 'company-1',
       name: 'Example Cloud',
-      logo_url: 'http://logos.example/company.png',
+      company_logo: { url: 'http://logos.example/company.png' },
       website: 'http://example.com',
       domain: 'example.com',
       industry: 'Cloud Computing',

@@ -66,6 +66,14 @@ function secureCompanyUrl(value) {
   }
 }
 
+function getCompanyLogo(company) {
+  const logo = company?.logo || company?.logo_url || company?.logoUrl || company?.company_logo ||
+    company?.company_logo_url || company?.image_url;
+  if (typeof logo === 'string') return logo;
+  if (logo && typeof logo === 'object') return logo.url || logo.original || logo.src || null;
+  return null;
+}
+
 function normalizeCompanySuggestion(company) {
   const id = typeof company?.id === 'string' ? company.id : '';
   const name = typeof (company?.name || company?.company_name) === 'string' ? (company.name || company.company_name).trim() : '';
@@ -75,7 +83,7 @@ function normalizeCompanySuggestion(company) {
   return {
     id,
     name,
-    logoUrl: secureCompanyUrl(company.logo || company.logo_url || company.company_logo_url || company.image_url),
+    logoUrl: secureCompanyUrl(getCompanyLogo(company)),
     website: secureCompanyUrl(company.website || company.website_url),
     domain: typeof domain === 'string' ? domain.replace(/^https?:\/\//i, '').split('/')[0] : null,
     industry: typeof industry === 'string' ? industry : null,
