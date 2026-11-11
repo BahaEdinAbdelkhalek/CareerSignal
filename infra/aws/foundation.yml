@@ -3,6 +3,12 @@ Description: >-
   CareerSignal AWS foundation. Creates private object storage and an on-demand
   owner-scoped table with lifecycle expiry. Does not deploy application code.
 
+Parameters:
+  AllowedOrigin:
+    Type: String
+    Description: Exact HTTPS origin of the static Cloudflare Pages site, with no path.
+    AllowedPattern: ^https://[A-Za-z0-9.-]+$
+
 Resources:
   CareerSignalCvBucket:
     Type: AWS::S3::Bucket
@@ -34,6 +40,17 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - !Ref AllowedOrigin
+            AllowedMethods:
+              - PUT
+            AllowedHeaders:
+              - content-type
+            ExposedHeaders:
+              - etag
+            MaxAge: 300
       VersioningConfiguration:
         Status: Suspended
 

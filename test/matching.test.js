@@ -64,6 +64,29 @@ test("contact selection ranks HR relevance, company fit and limits concentration
     assert.ok(selected[0].matchReasons.length > 0);
 });
 
+test("selected HR contact types exclude other HR titles", () => {
+    const selected = selectTopContacts([
+        { id: "p1", title: "Talent Acquisition Partner", companyId: "c1", company: "Example Co" },
+        { id: "p2", title: "HR Manager", companyId: "c1", company: "Example Co" }
+    ], [
+        { id: "c1", name: "Example Co", fitScore: 80, isRequestedTarget: true }
+    ], {}, { contactTypes: ["Talent Acquisition"] });
+
+    assert.deepEqual(selected.map(contact => contact.id), ["p1"]);
+});
+
+test("contact selection allows HR contacts at explicitly prioritized employers", () => {
+    const selected = selectTopContacts([
+        { id: "p1", title: "Human Resources Manager", companyId: "c1", company: "Safran" }
+    ], [
+        { id: "c1", name: "Safran", fitScore: 0, isPriorityTarget: true, matchReasons: ["Priority employer"] }
+    ], { hrJobTitles: ["HR Manager"] });
+
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].isPriorityTarget, true);
+    assert.ok(selected[0].matchReasons.includes("Priority employer"));
+});
+
 test("contact selection rejects non-HR titles and weak company matches", () => {
     const selected = selectTopContacts([
         { id: "p1", title: "Software Engineer", companyId: "c1", company: "Cloud Co" },

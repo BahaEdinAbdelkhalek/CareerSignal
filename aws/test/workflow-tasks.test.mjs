@@ -39,7 +39,7 @@ const analysis = {
   gaps: [],
 };
 
-function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'company-1', name: 'Example Software', description: 'Software development' }], enrichPerson = async contact => ({
+function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'company-1', name: 'Example Software', description: 'Software development' }], searchHrContacts = async () => contacts, enrichPerson = async contact => ({
   full_name: contact.fullName,
   email: { address: `${contact.id}@example.test`, status: 'valid' },
 }) } = {}) {
@@ -48,16 +48,18 @@ function testProspect({ contacts = [], searchCompanies = async () => [{ id: 'com
       return searchCompanies(options);
     },
     scoreCompanies(companies) { return companies.map(company => ({ ...company, fitScore: 90, matchReasons: ['software development'] })); },
-    async searchHrContacts() { return contacts; },
+    async searchHrContacts(options) { return searchHrContacts(options); },
     selectTopContacts(values) { return values.slice(0, 5); },
     enrichPerson,
   };
 }
 
 test('runs the same analysis-to-draft stages while keeping CV content out of task outputs', async () => {
-  const storage = createStorage({ 'jobs/input.json': { cvText: 'fictional CV text', preferences: { countryCodes: ['FR'] } } });
+  const preferences = { companyNames: ['ALTEN', 'Safran'], contactTypes: ['Technical Recruiter'], countryCodes: ['FR'] };
+  const storage = createStorage({ 'jobs/input.json': { cvText: 'fictional CV text', preferences } });
   const modelCalls = [];
   let companySearch;
+  let contactSearch;
   const model = {
     async analyseCv(text, preferences) {
       modelCalls.push(['analyse', text, preferences]);
@@ -74,7 +76,7 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
     title: 'Talent Acquisition Manager',
     company: { id: 'company-1', name: 'Example Software' },
   }));
-  const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', description: 'Software development' }]; } }), model, extractPdfText: async () => 'unused' });
+  const task = createWorkflowTaskHandler({ storage, prospect: testProspect({ contacts, searchCompanies: async options => { companySearch = options; return [{ id: 'company-1', name: 'Example Software', description: 'Software development' }]; }, searchHrContacts: async options => { contactSearch = options; return contacts; } }), model, extractPdfText: async () => 'unused' });
 
   const analysisOutput = await task({ action: 'analyse', ownerId: OWNER, searchId: SEARCH_ID, inputKey: 'jobs/input.json' });
   assert.deepEqual(Object.keys(analysisOutput), ['analysisKey']);
@@ -86,9 +88,10 @@ test('runs the same analysis-to-draft stages while keeping CV content out of tas
 
   assert.deepEqual(finalOutput, { completed: true });
   assert.equal(modelCalls[0][0], 'analyse');
-  assert.deepEqual(modelCalls[0].slice(1), ['fictional CV text', { countryCodes: ['FR'] }]);
-  assert.deepEqual(companySearch.keywords, ['software development', 'TypeScript', 'Software Engineer']);
-  assert.deepEqual(companySearch.countryCodes, ['FR']);
+  assert.deepEqual(modelCalls[0].slice(1), ['fictional CV text', preferences]);
+  assert.deepEqual(companySearch, { companyNames: ['ALTEN', 'Safran'], countryCodes: ['FR'], perPage: 100, maxPages: 2 });
+  assert.deepEqual(contactSearch.companyIds, ['company-1']);
+  assert.deepEqual(contactSearch.contactTypes, ['Technical Recruiter']);
   assert.deepEqual(modelCalls[1], ['drafts', 5]);
   assert.deepEqual(storage.completed, {
     ownerId: OWNER,

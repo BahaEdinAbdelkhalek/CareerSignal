@@ -1,5 +1,7 @@
 "use strict";
 
+const { getHrJobTitleSearchTerms } = require("./hr-titles");
+
 const STOP_WORDS = new Set([
     "a", "an", "and", "as", "at", "by", "for", "from", "in", "into",
     "of", "on", "or", "the", "to", "with", "your", "our"
@@ -181,16 +183,20 @@ function scoreContact(contact, companyById, analysis = {}) {
         );
     const companyScore = company ? Number(company.fitScore) || 0 : 0;
     const emailScore = contact.hasEmail || contact.email ? 100 : 0;
+    const isPriorityTarget = Boolean(company?.isPriorityTarget);
     const fitScore = Math.round((roleScore * 0.65) + (companyScore * 0.30) + (emailScore * 0.05));
 
     const matchReasons = [];
     if (roleScore >= 80) matchReasons.push("HR role matches a recruiting or people-function title");
+    if (company?.isRequestedTarget) matchReasons.push("Requested company");
+    else if (isPriorityTarget) matchReasons.push("Priority employer");
     if (company?.matchReasons?.length) matchReasons.push(...company.matchReasons.slice(0, 3));
     if (emailScore) matchReasons.push("GetProspect reports an email is available");
 
     return {
         ...contact,
         fitScore,
+        isPriorityTarget,
         scoreBreakdown: {
             hrRoleRelevance: roleScore,
             companyRelevance: companyScore,
@@ -205,6 +211,8 @@ function selectTopContacts(contacts, companies, analysis = {}, options = {}) {
     const minimumScore = Number.isFinite(options.minimumScore) ? options.minimumScore : 50;
     const minimumCompanyScore = Number.isFinite(options.minimumCompanyScore) ? options.minimumCompanyScore : 10;
     const maxPerCompany = Math.max(1, Number(options.maxPerCompany) || 2);
+    const requestedContactTypes = Array.isArray(options.contactTypes) ? options.contactTypes : [];
+    const requestedTitles = requestedContactTypes.length ? getHrJobTitleSearchTerms(requestedContactTypes) : [];
     const companyById = new Map((companies || []).map(company => [String(company.id), company]));
     const seen = new Set();
 
@@ -220,7 +228,13 @@ function selectTopContacts(contacts, companies, analysis = {}, options = {}) {
         .filter(contact =>
             contact.fitScore >= minimumScore &&
             contact.scoreBreakdown.hrRoleRelevance >= 70 &&
-            contact.scoreBreakdown.companyRelevance >= minimumCompanyScore
+            (!requestedContactTypes.length || requestedTitles.some(title => {
+                const normalizedTitle = normalizeText(contact.title);
+                const normalizedRequested = normalizeText(title);
+                return normalizedTitle.includes(normalizedRequested) ||
+                    termSimilarity(normalizedRequested, normalizedTitle, new Set(tokenize(normalizedTitle))) >= 0.5;
+            })) &&
+            (contact.isPriorityTarget || contact.scoreBreakdown.companyRelevance >= minimumCompanyScore)
         )
         .sort((a, b) =>
             b.fitScore - a.fitScore ||

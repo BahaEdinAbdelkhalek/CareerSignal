@@ -25,6 +25,29 @@ test('calls an OpenAI-compatible JSON endpoint and returns parsed content', asyn
   assert.deepEqual(JSON.parse(request.init.body).response_format, { type: 'json_object' });
 });
 
+test('calls Gemini generateContent with JSON output and parses its response', async () => {
+  let request;
+  const chatJson = createModelChatJson({
+    ...common,
+    provider: 'gemini',
+    endpoint: 'https://generativelanguage.googleapis.com/v1beta',
+    model: 'gemini-2.5-flash',
+    fetchImpl: async (url, init) => {
+      request = { url, init };
+      return Response.json({ candidates: [{ content: { parts: [{ text: '{"skills":["TypeScript"]}' }] } }] });
+    },
+  });
+  const result = await chatJson('system rules', 'user payload');
+
+  assert.deepEqual(result, { skills: ['TypeScript'] });
+  assert.equal(request.url, 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent');
+  assert.equal(new Headers(request.init.headers).get('x-goog-api-key'), 'model-secret');
+  const body = JSON.parse(request.init.body);
+  assert.equal(body.systemInstruction.parts[0].text, 'system rules');
+  assert.equal(body.generationConfig.responseMimeType, 'application/json');
+  assert.match(body.contents[0].parts[0].text, /user payload/);
+});
+
 test('fails closed on invalid endpoint, response and HTTP errors without exposing provider body', async () => {
   const invalidEndpoint = createModelChatJson({ ...common, endpoint: 'http://model.example/v1' });
   await assert.rejects(() => invalidEndpoint('system', 'prompt'), /HTTPS/);

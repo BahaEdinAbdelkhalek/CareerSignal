@@ -26,13 +26,15 @@ function mapContact(person) {
 }
 
 df.app.activity("HRContactDiscovery", {
-    handler: async ({ companies = [], analysis = {} }) => {
+    handler: async ({ companies = [], analysis = {}, preferences = {} }) => {
         const companyIds = companies.map(company => company.id).filter(Boolean);
         if (!companyIds.length) return [];
 
+        const contactTypes = Array.isArray(preferences.contactTypes) ? preferences.contactTypes : [];
+        if (!contactTypes.length) throw new Error("Choose at least one HR or recruiting contact type.");
         const discovered = await searchHrContacts({
             companyIds,
-            jobTitles: analysis.hrJobTitles || [],
+            contactTypes,
             perPage: 100,
             maxPages: 3
         });
@@ -42,7 +44,8 @@ df.app.activity("HRContactDiscovery", {
             limit: 5,
             minimumScore: 50,
             minimumCompanyScore: 20,
-            maxPerCompany: 2
+            maxPerCompany: 2,
+            contactTypes
         });
     }
 });

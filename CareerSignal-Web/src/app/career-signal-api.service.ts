@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { environment } from '../environments/environment';
-import { CareerSignalResult, Preferences } from './models';
+import { CareerSignalResult, Company, Preferences } from './models';
 
 interface SearchStarted {
   searchId: string;
@@ -17,6 +17,10 @@ interface SearchStatus {
   error?: string;
 }
 
+interface CompanySearchResponse {
+  companies: Company[];
+}
+
 interface GatewayError {
   error?: string;
 }
@@ -25,6 +29,15 @@ interface GatewayError {
 export class CareerSignalApiService {
   private readonly pollIntervalMs = 2000;
   private readonly maxPollAttempts = 300;
+
+  async searchCompanies(query: string): Promise<Company[]> {
+    const response = await this.request('/api/companies/search', {
+      method: 'POST',
+      body: JSON.stringify({ query }),
+    });
+    const result = await this.readJson<CompanySearchResponse>(response);
+    return Array.isArray(result.companies) ? result.companies : [];
+  }
 
   async run(cv: File | string, preferences: Preferences): Promise<CareerSignalResult> {
     let cvText: string | null = null;

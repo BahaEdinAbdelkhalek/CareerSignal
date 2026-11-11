@@ -26,13 +26,13 @@ Both paths are intended to preserve the same workflow and browser API behavior. 
 
 1. Accepts plain-text CV content or a text-based PDF up to 10 MB. Scanned PDFs are not OCR'd.
 2. Extracts CV text and stores it temporarily in private S3.
-3. Uses a configured OpenAI-compatible Chat Completions endpoint to extract evidence-based skills, roles, search keywords, countries, and gaps.
+3. Uses a configured Google Gemini or OpenAI-compatible model endpoint to extract evidence-based skills, roles, search keywords, countries, and gaps.
 4. Searches GetProspect for companies and ranks a bounded result set using deterministic matching rules.
 5. Searches those companies for HR/Talent Acquisition contacts, ranks them, and selects no more than five (at most two per company).
 6. Attempts sequential email enrichment for those five contacts only.
 7. Generates one editable outreach draft per contact. Recipient name, company, and email come from provider data, not model claims.
 
-GetProspect email enrichment can consume credits. The model endpoint can also charge and receives CV information. Bedrock is not assumed to be available in the Learner Lab. Review provider pricing and privacy terms before using real CVs.
+GetProspect email enrichment can consume credits. The model endpoint may also charge and receives CV information. Bedrock is not assumed to be available in the Learner Lab. Use fictional CVs for demos; review the exact model API plan's pricing and privacy terms before sending real CVs.
 
 ## Matching model
 

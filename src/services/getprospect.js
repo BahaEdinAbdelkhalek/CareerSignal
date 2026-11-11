@@ -85,39 +85,57 @@ async function searchPages(path, requestBody, perPage, maxPages = MAX_SAFE_SEARC
     return results;
 }
 
-async function searchCompanies({ keywords, countryCodes = [], perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES }) {
-    const cleanKeywords = [...new Set((keywords || [])
+async function searchCompanies({ keywords = [], companyNames = [], countryCodes = [], perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES, postRequest = post }) {
+    const cleanKeywords = [...new Set(keywords
         .map(value => String(value).trim())
         .filter(value => value.length >= 3 && value.length <= 100))].slice(0, 20);
+    const cleanCompanyNames = [...new Set(companyNames
+        .map(value => String(value).trim())
+        .filter(value => value.length >= 2 && value.length <= 100))].slice(0, 150);
 
-    if (cleanKeywords.length === 0) {
-        throw new Error("Company discovery requires at least one company keyword (3-100 characters).");
+    if (!cleanKeywords.length && !cleanCompanyNames.length) {
+        throw new Error("Company discovery requires at least one company keyword or company name.");
     }
 
-    const filters = { company_keywords: { include: cleanKeywords } };
-    const countries = [...new Set((countryCodes || [])
+    const countries = [...new Set(countryCodes
         .map(value => String(value).trim().toUpperCase())
         .filter(value => /^[A-Z]{2}$/.test(value)))];
-    if (countries.length) filters.company_country = { include: countries };
-
     const safePageSize = [25, 50, 100].includes(perPage) ? perPage : 100;
-    return searchPages("/v2/companies/search", { filters }, safePageSize, maxPages);
+    const searches = [];
+
+    if (cleanKeywords.length) {
+        const filters = { company_keywords: { include: cleanKeywords } };
+        if (countries.length) filters.company_country = { include: countries };
+        searches.push(searchPages("/v2/companies/search", { filters }, safePageSize, maxPages, postRequest));
+    }
+    if (cleanCompanyNames.length) {
+        const filters = { company: { name: { include: cleanCompanyNames } } };
+        if (countries.length) filters.company_country = { include: countries };
+        const nameSearchPages = Math.max(1, Math.min(2, Number(maxPages) || 2));
+        searches.push(searchPages("/v2/companies/search", { filters }, safePageSize, nameSearchPages, postRequest));
+    }
+
+    const results = (await Promise.all(searches)).flat();
+    const seen = new Set();
+    return results.filter(company => {
+        const id = String(company?.id || "");
+        if (!id || seen.has(id)) return false;
+        seen.add(id);
+        return true;
+    });
 }
 
-async function searchHrContacts({ companyIds, jobTitles, perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES }) {
+async function searchHrContacts({ companyIds, jobTitles, contactTypes, perPage = 100, maxPages = MAX_SAFE_SEARCH_PAGES, postRequest = post }) {
     const ids = [...new Set((companyIds || []).filter(Boolean).map(String))].slice(0, 100);
     if (!ids.length) return [];
 
-    const titles = getHrJobTitleSearchTerms(jobTitles);
+    const requestedTypes = Array.isArray(contactTypes) && contactTypes.length ? contactTypes : jobTitles;
+    const titles = getHrJobTitleSearchTerms(requestedTypes);
+    if (!titles.length) throw new Error("Choose at least one valid HR or recruiting contact type.");
     const filters = {
         company: { id: { include: ids } },
         person_job_title: {
-            include: titles.length ? titles : [
-                "Talent Acquisition", "Talent Acquisition Manager", "Recruiter",
-                "Technical Recruiter", "HR Manager", "Human Resources Manager",
-                "People Operations", "HR Business Partner", "Head of People",
-                "Chief Human Resources Officer", "Campus Recruiter"
-            ],
+            include: titles,
             match_mode: "CONTAINS"
         },
         max_person_per_company: 2
@@ -128,7 +146,7 @@ async function searchHrContacts({ companyIds, jobTitles, perPage = 100, maxPages
         filters,
         sort_by: "person_email_available",
         sort_direction: "desc"
-    }, safePageSize, maxPages);
+    }, safePageSize, maxPages, postRequest);
     return payload;
 }
 

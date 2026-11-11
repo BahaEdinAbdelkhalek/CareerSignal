@@ -22,14 +22,80 @@ function parseJson(body) {
 }
 
 function parsePreferences(value) {
-  if (value === undefined || value === null) return {};
+  if (value === undefined || value === null) return { error: response(400, { error: 'Search preferences are required.' }) };
   if (typeof value !== 'object' || Array.isArray(value)) {
     return { error: response(400, { error: 'Preferences must be a JSON object.' }) };
   }
   if (Buffer.byteLength(JSON.stringify(value), 'utf8') > MAX_PREFERENCES_BYTES) {
     return { error: response(413, { error: 'Preferences exceed the 10 KB limit.' }) };
   }
-  return { value };
+
+  const companyNames = normalizePreferenceList(value.companyNames, 100);
+  if (!companyNames || companyNames.length < 1) {
+    return { error: response(400, { error: 'Enter at least one company to search.' }) };
+  }
+  if (companyNames.length > 5) {
+    return { error: response(400, { error: 'Search up to five companies at a time.' }) };
+  }
+  if (companyNames.some(name => name.length < 2)) {
+    return { error: response(400, { error: 'Company names must be at least two characters.' }) };
+  }
+  const contactTypes = normalizePreferenceList(value.contactTypes, 100);
+  if (!contactTypes || !contactTypes.length) {
+    return { error: response(400, { error: 'Choose at least one HR or recruiting contact type.' }) };
+  }
+  if (contactTypes.length > 10) {
+    return { error: response(400, { error: 'Choose no more than ten contact types.' }) };
+  }
+  if (contactTypes.some(type => !/(recruit|talent acquisition|talent sourc(?:er|ing)|human resources|\bhr\b|people operations|people ops|people partner|talent partner|head of people|chief people|vp people)/i.test(type))) {
+    return { error: response(400, { error: 'Contact types must be HR, recruiting, talent, or people-function titles.' }) };
+  }
+  return { value: { ...value, companyNames, contactTypes } };
+}
+
+function secureCompanyUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  try {
+    const input = value.trim();
+    const url = new URL(/^https?:\/\//i.test(input) ? input : `https://${input}`);
+    if (!['http:', 'https:'].includes(url.protocol)) return null;
+    url.protocol = 'https:';
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCompanySuggestion(company) {
+  const id = typeof company?.id === 'string' ? company.id : '';
+  const name = typeof (company?.name || company?.company_name) === 'string' ? (company.name || company.company_name).trim() : '';
+  if (!id || !name) return null;
+  const domain = company.domain || company.website_domain || null;
+  const industry = Array.isArray(company.industry) ? company.industry.join(', ') : company.industry || company.industries || null;
+  return {
+    id,
+    name,
+    logoUrl: secureCompanyUrl(company.logo || company.logo_url || company.company_logo_url || company.image_url),
+    website: secureCompanyUrl(company.website || company.website_url),
+    domain: typeof domain === 'string' ? domain.replace(/^https?:\/\//i, '').split('/')[0] : null,
+    industry: typeof industry === 'string' ? industry : null,
+  };
+}
+
+function normalizePreferenceList(value, maximumLength) {
+  if (!Array.isArray(value)) return null;
+  const items = [];
+  const seen = new Set();
+  for (const item of value) {
+    if (typeof item !== 'string') return null;
+    const normalized = item.trim().replace(/\s+/g, ' ');
+    if (!normalized || normalized.length > maximumLength) return null;
+    const key = normalized.toLocaleLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    items.push(normalized);
+  }
+  return items;
 }
 
 export function createSearchApi({ verifyRequest, services }) {
@@ -52,6 +118,20 @@ export function createSearchApi({ verifyRequest, services }) {
     if (body.length > MAX_API_BODY_BYTES) return response(413, { error: 'Request body exceeds the permitted limit.' });
 
     try {
+      if (method === 'POST' && path === '/api/companies/search') {
+        const input = parseJson(body);
+        const query = typeof input?.query === 'string' ? input.query.trim().replace(/\s+/g, ' ') : '';
+        if (query.length < 2 || query.length > 100) {
+          return response(400, { error: 'Search using a company name between 2 and 100 characters.' });
+        }
+        const discovered = await services.lookupCompanies({ query });
+        const companies = (Array.isArray(discovered) ? discovered : [])
+          .map(normalizeCompanySuggestion)
+          .filter(Boolean)
+          .slice(0, 10);
+        return response(200, { companies });
+      }
+
       if (method === 'POST' && path === '/api/uploads') {
         const input = parseJson(body);
         if (!input || input.contentType !== 'application/pdf') {

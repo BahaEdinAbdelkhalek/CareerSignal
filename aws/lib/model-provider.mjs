@@ -29,30 +29,50 @@ function chatCompletionsUrl(baseUrl) {
   return base.href;
 }
 
-export function createModelChatJson({ endpoint, model, getApiKey, fetchImpl = fetch }) {
+function geminiGenerateContentUrl(endpoint, model) {
+  if (!endpoint) throw new Error('The model API endpoint is not configured.');
+  const base = new URL(endpoint);
+  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash) {
+    throw new Error('The model API endpoint must be a clean HTTPS URL.');
+  }
+  const path = base.pathname.replace(/\/+$/, '');
+  if (path.endsWith(':generateContent')) return base.href;
+  return `${base.origin}${path}/models/${encodeURIComponent(model)}:generateContent`;
+}
+
+export function createModelChatJson({ endpoint, model, provider = 'openai-compatible', getApiKey, fetchImpl = fetch }) {
   return async function chatJson(systemPrompt, userPrompt) {
     if (typeof getApiKey !== 'function') throw new TypeError('A model API key provider is required.');
     if (!model) throw new Error('The model deployment name is not configured.');
+    if (!['openai-compatible', 'gemini'].includes(provider)) throw new Error('The configured model provider is not supported.');
     const apiKey = await getApiKey();
     if (typeof apiKey !== 'string' || !apiKey.trim()) throw new Error('The model API key is not configured.');
-    const url = chatCompletionsUrl(endpoint);
-
-    let response;
-    try {
-      response = await fetchImpl(url, {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${apiKey}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
+    const gemini = provider === 'gemini';
+    const url = gemini ? geminiGenerateContentUrl(endpoint, model) : chatCompletionsUrl(endpoint);
+    const request = gemini
+      ? {
+          systemInstruction: { parts: [{ text: systemPrompt }] },
+          contents: [{ role: 'user', parts: [{ text: `Return a valid JSON object only.\n${userPrompt}` }] }],
+          generationConfig: { responseMimeType: 'application/json' },
+        }
+      : {
           model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: `Return a valid JSON object only.\n${userPrompt}` },
           ],
           response_format: { type: 'json_object' },
-        }),
+        };
+
+    let response;
+    try {
+      response = await fetchImpl(url, {
+        method: 'POST',
+        headers: {
+          ...(gemini ? { 'x-goog-api-key': apiKey } : { authorization: `Bearer ${apiKey}` }),
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(request),
         signal: AbortSignal.timeout(120000),
         redirect: 'error',
       });
@@ -68,7 +88,9 @@ export function createModelChatJson({ endpoint, model, getApiKey, fetchImpl = fe
     }
 
     const payload = await response.json().catch(() => null);
-    const content = payload?.choices?.[0]?.message?.content;
+    const content = gemini
+      ? payload?.candidates?.[0]?.content?.parts?.map(part => part.text || '').join('')
+      : payload?.choices?.[0]?.message?.content;
     if (typeof content !== 'string' || !content.trim()) {
       throw new Error('The configured model returned no text.');
     }

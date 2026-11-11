@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const MAX_ENRICHMENTS = 5;
-const COMPANY_SHORTLIST_SIZE = 20;
+const MAX_TARGET_COMPANIES = 5;
 
 function ownerHash(ownerId) {
   return createHash('sha256').update(ownerId).digest('hex');
@@ -18,6 +18,7 @@ function normalizeCompany(company) {
     name: company.name || company.company_name || 'Unknown company',
     website: company.website || company.website_url || null,
     domain: company.domain || company.website_domain || null,
+    logoUrl: company.logo || company.logo_url || company.logoUrl || company.company_logo_url || company.image_url || null,
     industry: company.industry || company.industries || null,
     description: company.description || company.company_description || null,
     specialties: company.specialties || null,
@@ -88,21 +89,31 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
 
       if (action === 'discoverCompanies') {
         const profile = await storage.getJson(event.analysisKey);
-        const keywords = [...new Set([
-          ...(profile.analysis.companyKeywords || []),
-          ...(profile.analysis.skills || []),
-          ...(profile.analysis.targetRoles || []),
-        ].filter(value => typeof value === 'string').map(value => value.trim()).filter(value => value.length >= 3 && value.length <= 100))].slice(0, 20);
-        if (!keywords.length) keywords.push('software development', 'cloud computing', 'IT services');
+        const companyNames = [...new Map((profile.preferences.companyNames || [])
+          .filter(value => typeof value === 'string')
+          .map(value => value.trim())
+          .filter(value => value.length >= 2 && value.length <= 100)
+          .map(value => [value.toLocaleLowerCase(), value])).values()].slice(0, MAX_TARGET_COMPANIES);
+        if (!companyNames.length) throw new Error('Enter between one and five companies to search.');
         const countryCodes = Array.isArray(profile.analysis.countryCodes) && profile.analysis.countryCodes.length
           ? profile.analysis.countryCodes
           : (profile.preferences.countryCodes || []);
-        const discovered = await prospect.searchCompanies({ keywords, countryCodes, perPage: 100, maxPages: 3 });
+        const discovered = await prospect.searchCompanies({
+          companyNames,
+          countryCodes,
+          perPage: 100,
+          maxPages: 2,
+        });
         const ranked = prospect.scoreCompanies(
           discovered.map(normalizeCompany).filter(company => company.id && company.name),
           profile.analysis,
           profile.preferences,
-        ).filter(company => company.fitScore > 0).slice(0, COMPANY_SHORTLIST_SIZE);
+        ).map(company => ({
+          ...company,
+          isRequestedTarget: true,
+          isPriorityTarget: true,
+          matchReasons: [...new Set(['Requested company', ...(company.matchReasons || [])])].slice(0, 6),
+        })).slice(0, MAX_TARGET_COMPANIES);
         const companiesKey = stageKey(ownerId, searchId, 'companies');
         await storage.putJson(companiesKey, ranked);
         return { companiesKey };
@@ -117,9 +128,11 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
           await storage.putJson(contactsKey, []);
           return { contactsKey };
         }
+        const contactTypes = Array.isArray(profile.preferences.contactTypes) ? profile.preferences.contactTypes : [];
+        if (!contactTypes.length) throw new Error('Choose at least one HR or recruiting contact type.');
         const discovered = await prospect.searchHrContacts({
           companyIds,
-          jobTitles: profile.analysis.hrJobTitles || [],
+          contactTypes,
           perPage: 100,
           maxPages: 3,
         });
@@ -127,7 +140,7 @@ export function createWorkflowTaskHandler({ storage, prospect, model, extractPdf
           discovered.map(normalizeContact).filter(contact => contact.id && contact.fullName && contact.title),
           companies,
           profile.analysis,
-          { limit: 5, minimumScore: 50, minimumCompanyScore: 20, maxPerCompany: 2 },
+          { limit: 5, minimumScore: 50, minimumCompanyScore: 20, maxPerCompany: 2, contactTypes },
         );
         const contactsKey = stageKey(ownerId, searchId, 'contacts');
         await storage.putJson(contactsKey, contacts);

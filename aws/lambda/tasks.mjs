@@ -23,6 +23,7 @@ getprospect.setApiKeyProvider(async () => {
 foundry.setChatJsonProvider(createModelChatJson({
   endpoint: process.env.MODEL_API_ENDPOINT,
   model: process.env.MODEL_API_MODEL,
+  provider: process.env.MODEL_API_PROVIDER || 'openai-compatible',
   getApiKey: async () => (await getProviderSecrets()).modelApiKey,
 }));
 

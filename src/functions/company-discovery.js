@@ -4,7 +4,7 @@ const df = require("durable-functions");
 const { searchCompanies } = require("../services/getprospect");
 const { scoreCompanies } = require("../services/matching");
 
-const COMPANY_SHORTLIST_SIZE = 20;
+const MAX_TARGET_COMPANIES = 5;
 
 function normalizeCompany(company) {
     const location = company.location || company.headquarters || null;
@@ -26,27 +26,30 @@ function normalizeCompany(company) {
 
 df.app.activity("CompanyDiscovery", {
     handler: async ({ analysis = {}, preferences = {} }) => {
-        const keywords = Array.isArray(analysis.companyKeywords) && analysis.companyKeywords.length
-            ? analysis.companyKeywords
-            : ["software development", "cloud computing", "IT services"];
-        const countryCodes = Array.isArray(analysis.countryCodes) && analysis.countryCodes.length
-            ? analysis.countryCodes
-            : (preferences.countryCodes || []);
+        const companyNames = [...new Map((preferences.companyNames || [])
+            .filter(value => typeof value === "string")
+            .map(value => value.trim())
+            .filter(value => value.length >= 2 && value.length <= 100)
+            .map(value => [value.toLocaleLowerCase(), value])).values()].slice(0, MAX_TARGET_COMPANIES);
+        if (!companyNames.length) throw new Error("Enter between one and five companies to search.");
+        const countryCodes = Array.isArray(preferences.countryCodes) ? preferences.countryCodes : (analysis.countryCodes || []);
 
         const discovered = await searchCompanies({
-            keywords,
+            companyNames,
             countryCodes,
             perPage: 100,
-            maxPages: 3
+            maxPages: 2
         });
 
-        const normalized = discovered.map(normalizeCompany).filter(company => company.id && company.name);
-        const ranked = scoreCompanies(normalized, analysis, preferences);
-
-        // A zero score means the available company profile contains no evidence
-        // for the candidate's extracted criteria. Do not represent it as a match.
-        return ranked
-            .filter(company => company.fitScore > 0)
-            .slice(0, COMPANY_SHORTLIST_SIZE);
+        return scoreCompanies(
+            discovered.map(normalizeCompany).filter(company => company.id && company.name),
+            analysis,
+            preferences
+        ).map(company => ({
+            ...company,
+            isRequestedTarget: true,
+            isPriorityTarget: true,
+            matchReasons: [...new Set(["Requested company", ...(company.matchReasons || [])])].slice(0, 6)
+        })).slice(0, MAX_TARGET_COMPANIES);
     }
 });

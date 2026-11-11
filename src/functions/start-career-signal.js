@@ -45,6 +45,39 @@ async function extractPdfText(buffer) {
     }
 }
 
+function validateTargetingPreferences(preferences) {
+    const companyNames = normalizeSearchList(preferences.companyNames, 5, "company names");
+    if (!companyNames.length) throw new InputError(400, "Enter at least one company to search.");
+    if (companyNames.length > 5) throw new InputError(400, "Search up to five companies at a time.");
+    if (companyNames.some(name => name.length < 2)) throw new InputError(400, "Company names must be at least two characters.");
+
+    const contactTypes = normalizeSearchList(preferences.contactTypes, 10, "contact types");
+    if (!contactTypes.length) throw new InputError(400, "Choose at least one HR or recruiting contact type.");
+    if (contactTypes.length > 10) throw new InputError(400, "Choose no more than ten contact types.");
+    if (contactTypes.some(type => !/(recruit|talent acquisition|talent sourc(?:er|ing)|human resources|\bhr\b|people operations|people ops|people partner|talent partner|head of people|chief people|vp people)/i.test(type))) {
+        throw new InputError(400, "Contact types must be HR, recruiting, talent, or people-function titles.");
+    }
+    return { ...preferences, companyNames, contactTypes };
+}
+
+function normalizeSearchList(value, maximum, label) {
+    if (!Array.isArray(value)) throw new InputError(400, `Choose ${label} as a list.`);
+    const items = [];
+    const seen = new Set();
+    for (const item of value) {
+        if (typeof item !== "string") throw new InputError(400, `Each ${label.replace(/s$/, "")} must be text.`);
+        const normalized = item.trim().replace(/\s+/g, " ");
+        if (!normalized || normalized.length > 100) throw new InputError(400, `Each ${label.replace(/s$/, "")} must be between 1 and 100 characters.`);
+        const key = normalized.toLocaleLowerCase();
+        if (!seen.has(key)) { seen.add(key); items.push(normalized); }
+    }
+    if (items.length > maximum) {
+        const message = label === "company names" ? "Search up to five companies at a time." : "Choose no more than ten contact types.";
+        throw new InputError(400, message);
+    }
+    return items;
+}
+
 function parsePreferences(value) {
     if (value === undefined || value === null || value === "") return {};
     if (typeof value === "string") {
@@ -128,6 +161,7 @@ app.http("StartCareerSignal", {
 
             if (!cvText) throw new InputError(400, "CV text is empty.");
             if (cvText.length > MAX_TEXT_SIZE) throw new InputError(413, "CV text exceeds 100,000 characters.");
+            preferences = validateTargetingPreferences(preferences);
 
             const instanceId = randomUUID();
             cvBlobName = await saveCvText(cvText, instanceId);

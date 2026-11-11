@@ -29,9 +29,24 @@ Parameters:
   StateMachineExecutionRoleArn:
     Type: String
     Description: Existing role trusted by Step Functions with permission to invoke TaskFunction.
+  AllowedOrigin:
+    Type: String
+    Description: Exact HTTPS origin of the static Cloudflare Pages site, with no path.
+    AllowedPattern: ^https://[A-Za-z0-9.-]+$
+  CognitoDomainPrefix:
+    Type: String
+    Description: Globally unique prefix for the Cognito managed login domain.
+    AllowedPattern: ^[a-z0-9-]{1,63}$
+  ModelApiProvider:
+    Type: String
+    Default: openai-compatible
+    AllowedValues:
+      - openai-compatible
+      - gemini
+    Description: Model API protocol to use.
   ModelApiEndpoint:
     Type: String
-    Description: HTTPS base URL for an OpenAI-compatible Chat Completions API, such as https://provider.example/v1.
+    Description: HTTPS API base URL. Gemini uses https://generativelanguage.googleapis.com/v1beta; compatible APIs use their Chat Completions base URL.
   ModelApiName:
     Type: String
     Description: Model or deployment name accepted by the configured API.
@@ -75,6 +90,7 @@ Resources:
           CAREERSIGNAL_DATA_BUCKET: !Ref DataBucketName
           CAREERSIGNAL_SEARCH_TABLE: !Ref SearchTableName
           CAREERSIGNAL_SECRETS_PARAMETER: !Ref ProviderSecretsParameterName
+          MODEL_API_PROVIDER: !Ref ModelApiProvider
           MODEL_API_ENDPOINT: !Ref ModelApiEndpoint
           MODEL_API_MODEL: !Ref ModelApiName
       Architectures:
@@ -197,12 +213,87 @@ Resources:
           }
         }
 
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "${AWS::StackName}-users"
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 12
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 60
+      IdTokenValidity: 60
+      RefreshTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: minutes
+        IdToken: minutes
+        RefreshToken: days
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows:
+        - code
+      AllowedOAuthScopes:
+        - openid
+        - email
+      CallbackURLs:
+        - !Sub "${AllowedOrigin}/"
+      LogoutURLs:
+        - !Sub "${AllowedOrigin}/"
+      SupportedIdentityProviders:
+        - COGNITO
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
   HttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: !Sub "${AWS::StackName}-api"
       ProtocolType: HTTP
-      Description: CareerSignal API. Requests require a signed Cloudflare gateway assertion.
+      Description: CareerSignal API authorized by Cognito JWTs.
+      CorsConfiguration:
+        AllowOrigins:
+          - !Ref AllowedOrigin
+        AllowMethods:
+          - GET
+          - POST
+          - DELETE
+          - OPTIONS
+        AllowHeaders:
+          - authorization
+          - content-type
+        MaxAge: 300
+
+  CognitoAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      Name: cognito-jwt
+      AuthorizerType: JWT
+      IdentitySource:
+        - "$request.header.Authorization"
+      JwtConfiguration:
+        Audience:
+          - !Ref UserPoolClient
+        Issuer: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
 
   ApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
@@ -218,7 +309,17 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "POST /api/searches"
-      AuthorizationType: NONE
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
+      Target: !Join ["/", [integrations, !Ref ApiIntegration]]
+
+  CompanyLookupRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: "POST /api/companies/search"
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
       Target: !Join ["/", [integrations, !Ref ApiIntegration]]
 
   UploadRoute:
@@ -226,7 +327,8 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "POST /api/uploads"
-      AuthorizationType: NONE
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
       Target: !Join ["/", [integrations, !Ref ApiIntegration]]
 
   SearchStatusRoute:
@@ -234,7 +336,8 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "GET /api/searches/{searchId}"
-      AuthorizationType: NONE
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
       Target: !Join ["/", [integrations, !Ref ApiIntegration]]
 
   DeleteSearchRoute:
@@ -242,13 +345,15 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       RouteKey: "DELETE /api/searches/{searchId}"
-      AuthorizationType: NONE
+      AuthorizationType: JWT
+      AuthorizerId: !Ref CognitoAuthorizer
       Target: !Join ["/", [integrations, !Ref ApiIntegration]]
 
   HttpApiStage:
     Type: AWS::ApiGatewayV2::Stage
     DependsOn:
       - StartSearchRoute
+      - CompanyLookupRoute
       - UploadRoute
       - SearchStatusRoute
       - DeleteSearchRoute
@@ -290,8 +395,16 @@ Resources:
 
 Outputs:
   ApiBaseUrl:
-    Description: Set CAREERSIGNAL_AWS_API_URL in the Cloudflare Worker to this HTTPS origin.
+    Description: API Gateway HTTPS origin for the static frontend.
     Value: !GetAtt HttpApi.ApiEndpoint
+  CognitoUserPoolId:
+    Value: !Ref UserPool
+  CognitoUserPoolClientId:
+    Value: !Ref UserPoolClient
+  CognitoIssuer:
+    Value: !Sub "https://cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}"
+  CognitoDomain:
+    Value: !Sub "https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com"
   WorkflowStateMachineArn:
     Description: CareerSignal Standard Step Functions state machine.
     Value: !Ref WorkflowStateMachine

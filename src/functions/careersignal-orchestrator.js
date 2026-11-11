@@ -18,7 +18,8 @@ df.app.orchestration("CareerSignalOrchestrator", function* (context) {
 
     const contacts = yield context.df.callActivity("HRContactDiscovery", {
         companies,
-        analysis
+        analysis,
+        preferences: input.preferences
     });
 
     const enrichedContacts = yield context.df.callActivity("EmailEnrichment", {
