@@ -1,17 +1,50 @@
 "use strict";
 
 const DEFAULT_HR_JOB_TITLES = [
-    "Talent Acquisition",
-    "Talent Acquisition Manager",
     "Recruiter",
     "Technical Recruiter",
+    "Engineering Recruiter",
+    "Corporate Recruiter",
+    "Executive Recruiter",
+    "Campus Recruiter",
+    "University Recruiter",
+    "Graduate Recruiter",
+    "Early Careers Recruiter",
+    "Recruiting Coordinator",
+    "Recruitment Manager",
+    "Recruitment Consultant",
+    "Talent Acquisition",
+    "Talent Acquisition Manager",
+    "Talent Acquisition Partner",
+    "Talent Acquisition Specialist",
+    "Talent Acquisition Director",
+    "Talent Sourcer",
     "HR Manager",
     "Human Resources Manager",
-    "People Operations",
+    "HR Director",
     "HR Business Partner",
+    "HR Generalist",
+    "HR Specialist",
+    "HR Coordinator",
+    "HR Administrator",
+    "HR Assistant",
+    "HR Operations Manager",
+    "HRIS Manager",
+    "HRIS Analyst",
+    "People Operations Manager",
+    "People Operations Specialist",
+    "People Partner",
+    "People Director",
     "Head of People",
+    "Chief People Officer",
     "Chief Human Resources Officer",
-    "Campus Recruiter"
+    "VP of Human Resources",
+    "VP of People",
+    "Employee Relations Manager",
+    "Compensation and Benefits Manager",
+    "Learning and Development Manager",
+    "Organizational Development Manager",
+    "People and Culture Manager"
 ];
 
 const CONTACT_TYPE_TITLE_TERMS = {
@@ -28,7 +61,7 @@ const CONTACT_TYPE_TITLE_TERMS = {
     "Head of People": ["Head of People", "Chief People Officer", "VP People", "People Director"]
 };
 
-const HR_TITLE_PATTERN = /\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent sourc(?:er|ing)|human resources|hr|people operations|people ops|people partner|talent partner|head of people|chief people|vp people)\b/i;
+const HR_TITLE_PATTERN = /\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent sourc(?:er|ing)|human resources|hr|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|employee relations|compensation and benefits|learning and development|organizational development)\b/i;
 
 function normalizeHrJobTitles(value) {
     if (!Array.isArray(value)) return [...DEFAULT_HR_JOB_TITLES];

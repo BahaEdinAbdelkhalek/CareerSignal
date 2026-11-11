@@ -103,7 +103,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
           <div class="profile-section"><h3>Skills</h3><div class="tag-list"><span *ngFor="let item of result.analysis.skills">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Target roles</h3><div class="tag-list"><span *ngFor="let item of result.analysis.targetRoles">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Search preferences</h3><p>Companies: {{ selectedCompanyNames.join(', ') }}<br>People: {{ selectedContactTypes.join(', ') }}<br>{{ countryList.join(', ') || 'Countries not specified' }}<span *ngIf="preferences.internshipDuration"> · {{ preferences.internshipDuration }}</span></p></div>
-
+          <div class="profile-section gaps" *ngIf="result.analysis.gaps.length"><h3>Gaps to review</h3><ul><li *ngFor="let item of result.analysis.gaps">{{ item }}</li></ul></div>
 
         </section>
       </aside>
@@ -159,7 +159,20 @@ export class AppComponent {
   companyLookupError = '';
   targetingError = '';
   contactTypeError = '';
-  contactTypeOptions = ['Talent Acquisition', 'Recruiter', 'Technical Recruiter', 'Campus Recruiter', 'HR Manager', 'HR Business Partner', 'People Operations', 'Head of People'];
+  contactTypeOptions = [
+    'Recruiter', 'Technical Recruiter', 'Engineering Recruiter', 'Corporate Recruiter', 'Executive Recruiter',
+    'Campus Recruiter', 'University Recruiter', 'Graduate Recruiter', 'Early Careers Recruiter',
+    'Recruiting Coordinator', 'Recruitment Manager', 'Recruitment Consultant',
+    'Talent Acquisition', 'Talent Acquisition Manager', 'Talent Acquisition Partner',
+    'Talent Acquisition Specialist', 'Talent Acquisition Director', 'Talent Sourcer', 'Talent Acquisition Sourcer',
+    'HR Manager', 'Human Resources Manager', 'HR Director', 'HR Business Partner',
+    'HR Generalist', 'HR Specialist', 'HR Coordinator', 'HR Administrator', 'HR Assistant',
+    'HR Operations Manager', 'HRIS Manager', 'HRIS Analyst', 'People Operations Manager',
+    'People Operations Specialist', 'People Partner', 'People Director', 'Head of People',
+    'Chief People Officer', 'Chief Human Resources Officer', 'VP of Human Resources', 'VP of People',
+    'Employee Relations Manager', 'Compensation and Benefits Manager',
+    'Learning and Development Manager', 'Organizational Development Manager', 'People and Culture Manager'
+  ];
   selectedContactTypes: string[] = [];
   customContactTypes: string[] = [];
   customContactTitle = '';
@@ -268,8 +281,8 @@ export class AppComponent {
     this.preferences.companyNames = this.selectedCompanies.map(selected => selected.name);
   }
   toggleContactType(type: string, checked: boolean): void {
-    if (checked && !this.selectedContactTypes.includes(type) && this.selectedContactTypes.length >= 10) {
-      this.contactTypeError = 'Choose no more than ten contact types.';
+    if (checked && !this.selectedContactTypes.includes(type) && this.selectedContactTypes.length >= 20) {
+      this.contactTypeError = 'Choose no more than twenty contact titles.';
       return;
     }
     this.selectedContactTypes = checked
@@ -290,12 +303,12 @@ export class AppComponent {
   addCustomContactType(): void {
     const title = this.customContactTitle.trim().replace(/\s+/g, ' ');
     if (!title) return;
-    if (!/(recruit|talent acquisition|talent sourc(?:er|ing)|human resources|\bhr\b|people operations|people ops|people partner|talent partner|head of people|chief people|vp people)/i.test(title)) {
+    if (!/(recruit|talent acquisition|talent sourc(?:er|ing)|human resources|\bhr\b|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|employee relations|compensation and benefits|learning and development|organizational development)/i.test(title)) {
       this.contactTypeError = 'Enter an HR, recruiting, talent, or people-function title.';
       return;
     }
     if (this.selectedContactTypes.some(type => type.toLocaleLowerCase() === title.toLocaleLowerCase())) { this.customContactTitle = ''; return; }
-    if (this.selectedContactTypes.length >= 10) { this.contactTypeError = 'Choose no more than ten contact types.'; return; }
+    if (this.selectedContactTypes.length >= 20) { this.contactTypeError = 'Choose no more than twenty contact titles.'; return; }
     this.selectedContactTypes = [...this.selectedContactTypes, title];
     this.customContactTypes = [...this.customContactTypes, title];
     this.preferences.contactTypes = [...this.selectedContactTypes];
@@ -353,7 +366,14 @@ export class AppComponent {
     return company ? this.companyLogoUrlFor(company) : null;
   }
   companyLogoUrlFor(company: Company): string | null {
-    return company.logoUrl ? this.secureLogoUrl(company.logoUrl) : null;
+    const providerLogo = company.logoUrl ? this.secureLogoUrl(company.logoUrl) : null;
+    if (providerLogo) return providerLogo;
+    const website = company.domain || company.website;
+    if (!website) return null;
+    try {
+      const host = new URL(website.startsWith('http') ? website : `https://${website}`).hostname.replace(/^www\./i, '');
+      return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128` : null;
+    } catch { return null; }
   }
   private secureLogoUrl(value: string): string | null {
     try {

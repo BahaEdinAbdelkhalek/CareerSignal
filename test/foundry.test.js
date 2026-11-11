@@ -7,6 +7,7 @@ const {
     normalizeAnalysis,
     normalizeDraftResults
 } = require("../src/services/foundry");
+const { DEFAULT_HR_JOB_TITLES } = require("../src/services/hr-titles");
 
 test("extractJson accepts a plain object and a fenced JSON response", () => {
     assert.deepEqual(extractJson('{"ok":true}'), { ok: true });
@@ -42,11 +43,7 @@ test("analysis normalization replaces candidate-role output with HR contact titl
         gaps: []
     });
 
-    assert.deepEqual(result.hrJobTitles, [
-        "Talent Acquisition", "Talent Acquisition Manager", "Recruiter", "Technical Recruiter",
-        "HR Manager", "Human Resources Manager", "People Operations", "HR Business Partner",
-        "Head of People", "Chief Human Resources Officer", "Campus Recruiter"
-    ]);
+    assert.deepEqual(result.hrJobTitles, DEFAULT_HR_JOB_TITLES);
 });
 
 test("draft normalization uses verified contact identity and email instead of model claims", () => {
