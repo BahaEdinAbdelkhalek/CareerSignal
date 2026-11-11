@@ -103,7 +103,7 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
           <div class="profile-section"><h3>Skills</h3><div class="tag-list"><span *ngFor="let item of result.analysis.skills">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Target roles</h3><div class="tag-list"><span *ngFor="let item of result.analysis.targetRoles">{{ item }}</span></div></div>
           <div class="profile-section"><h3>Search preferences</h3><p>Companies: {{ selectedCompanyNames.join(', ') }}<br>People: {{ selectedContactTypes.join(', ') }}<br>{{ countryList.join(', ') || 'Countries not specified' }}<span *ngIf="preferences.internshipDuration"> · {{ preferences.internshipDuration }}</span></p></div>
-          <div class="profile-section gaps" *ngIf="result.analysis.gaps.length"><h3>Gaps to review</h3><ul><li *ngFor="let item of result.analysis.gaps">{{ item }}</li></ul></div>
+
 
         </section>
       </aside>
@@ -160,18 +160,17 @@ export class AppComponent {
   targetingError = '';
   contactTypeError = '';
   contactTypeOptions = [
-    'Recruiter', 'Technical Recruiter', 'Engineering Recruiter', 'Corporate Recruiter', 'Executive Recruiter',
-    'Campus Recruiter', 'University Recruiter', 'Graduate Recruiter', 'Early Careers Recruiter',
-    'Recruiting Coordinator', 'Recruitment Manager', 'Recruitment Consultant',
-    'Talent Acquisition', 'Talent Acquisition Manager', 'Talent Acquisition Partner',
-    'Talent Acquisition Specialist', 'Talent Acquisition Director', 'Talent Sourcer', 'Talent Acquisition Sourcer',
-    'HR Manager', 'Human Resources Manager', 'HR Director', 'HR Business Partner',
-    'HR Generalist', 'HR Specialist', 'HR Coordinator', 'HR Administrator', 'HR Assistant',
-    'HR Operations Manager', 'HRIS Manager', 'HRIS Analyst', 'People Operations Manager',
-    'People Operations Specialist', 'People Partner', 'People Director', 'Head of People',
-    'Chief People Officer', 'Chief Human Resources Officer', 'VP of Human Resources', 'VP of People',
-    'Employee Relations Manager', 'Compensation and Benefits Manager',
-    'Learning and Development Manager', 'Organizational Development Manager', 'People and Culture Manager'
+    'Human Resources',
+    'Compensation & Benefits',
+    'Culture, Diversity & Inclusion',
+    'Employee & Labor Relations',
+    'HR Business Partner',
+    'Learning & Development',
+    'Organizational Development',
+    'People Operations',
+    'Recruiting & Talent Acquisition',
+    'Talent Management',
+    'Workforce Management'
   ];
   selectedContactTypes: string[] = [];
   customContactTypes: string[] = [];
@@ -361,7 +360,8 @@ export class AppComponent {
 
   private matchedCompany(person: Contact) { return this.result?.companies.find(company => company.id === person.companyId || company.name === person.company); }
   companyLogoUrl(person: Contact): string | null {
-    if (person.companyLogoUrl) return this.secureLogoUrl(person.companyLogoUrl);
+    const personLogo = person.companyLogoUrl ? this.secureLogoUrl(person.companyLogoUrl) : null;
+    if (personLogo) return personLogo;
     const company = this.matchedCompany(person);
     return company ? this.companyLogoUrlFor(company) : null;
   }

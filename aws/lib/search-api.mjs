@@ -47,7 +47,7 @@ function parsePreferences(value) {
   if (contactTypes.length > 20) {
     return { error: response(400, { error: 'Choose no more than twenty contact titles.' }) };
   }
-  if (contactTypes.some(type => !/(recruit|talent acquisition|talent sourc(?:er|ing)|human resources|\bhr\b|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|employee relations|compensation and benefits|learning and development|organizational development)/i.test(type))) {
+  if (contactTypes.some(type => !/(recruit|talent acquisition|talent management|talent sourc(?:er|ing)|human resources|\bhr\b|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|culture|diversity|inclusion|employee relations|labor relations|compensation\s*(?:&|and)\s*benefits|learning\s*(?:&|and)\s*development|organizational development|workforce management|workforce planning)/i.test(type))) {
     return { error: response(400, { error: 'Contact types must be HR, recruiting, talent, or people-function titles.' }) };
   }
   return { value: { ...value, companyNames, contactTypes } };

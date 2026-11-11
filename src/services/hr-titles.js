@@ -48,20 +48,26 @@ const DEFAULT_HR_JOB_TITLES = [
 ];
 
 const CONTACT_TYPE_TITLE_TERMS = {
-    "Talent Acquisition": [
-        "Talent Acquisition", "Talent Acquisition Manager", "Talent Acquisition Specialist",
-        "Talent Acquisition Partner", "Talent Acquisition Director"
-    ],
+    "Human Resources": ["Human Resources", "HR Manager", "HR Director", "HR Generalist", "HR Specialist"],
+    "Compensation & Benefits": ["Compensation and Benefits", "Compensation Manager", "Benefits Manager", "Total Rewards Manager"],
+    "Culture, Diversity & Inclusion": ["Culture and Inclusion", "Diversity and Inclusion", "Diversity and Inclusion Manager", "DEI Manager"],
+    "Employee & Labor Relations": ["Employee Relations", "Employee Relations Manager", "Labor Relations", "Labor Relations Manager"],
+    "HR Business Partner": ["HR Business Partner", "Human Resources Business Partner", "Senior HR Business Partner", "People Partner"],
+    "Learning & Development": ["Learning and Development", "Learning and Development Manager", "Training and Development", "Talent Development Manager"],
+    "Organizational Development": ["Organizational Development", "Organizational Development Manager", "Organizational Effectiveness", "Change Management"],
+    "People Operations": ["People Operations", "People Ops", "People Operations Manager", "People Operations Specialist"],
+    "Recruiting & Talent Acquisition": ["Recruiter", "Recruitment Manager", "Talent Acquisition", "Talent Acquisition Manager", "Talent Sourcer"],
+    "Talent Management": ["Talent Management", "Talent Management Manager", "Talent Management Specialist", "Succession Planning"],
+    "Workforce Management": ["Workforce Management", "Workforce Management Manager", "Workforce Planning", "Workforce Analyst"],
+    "Talent Acquisition": ["Talent Acquisition", "Talent Acquisition Manager", "Talent Acquisition Specialist", "Talent Acquisition Partner", "Talent Acquisition Director"],
     Recruiter: ["Recruiter", "Recruitment Manager", "Technical Recruiter", "Engineering Recruiter"],
     "Technical Recruiter": ["Technical Recruiter", "Engineering Recruiter", "IT Recruiter", "Technology Recruiter"],
     "Campus Recruiter": ["Campus Recruiter", "University Recruiter", "Graduate Recruiter", "Early Careers Recruiter"],
     "HR Manager": ["HR Manager", "Human Resources Manager", "HR Director", "Chief Human Resources Officer"],
-    "HR Business Partner": ["HR Business Partner", "Human Resources Business Partner", "People Partner"],
-    "People Operations": ["People Operations", "People Ops", "People Operations Manager"],
     "Head of People": ["Head of People", "Chief People Officer", "VP People", "People Director"]
 };
 
-const HR_TITLE_PATTERN = /\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent sourc(?:er|ing)|human resources|hr|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|employee relations|compensation and benefits|learning and development|organizational development)\b/i;
+const HR_TITLE_PATTERN = /\b(?:recruit(?:er|ing|ment)?|talent acquisition|talent management|talent sourc(?:er|ing)|human resources|hr|hris|people operations|people ops|people partner|talent partner|head of people|chief people|vp of people|people and culture|culture|diversity|inclusion|employee relations|labor relations|compensation\s*(?:&|and)\s*benefits|learning\s*(?:&|and)\s*development|organizational development|workforce management|workforce planning)\b/i;
 
 function normalizeHrJobTitles(value) {
     if (!Array.isArray(value)) return [...DEFAULT_HR_JOB_TITLES];
