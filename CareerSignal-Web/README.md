@@ -53,7 +53,7 @@ The app builds to `dist/careersignal/browser`. Interactive demo covers profile p
 
 This deployment is for the separate Azure Functions path only. It is not the deployment path for the current AWS `main` branch. The single-container app serves Angular and a Node gateway; the Azure Function key is supplied as a Container Apps secret and is never put in Angular configuration.
 
-See [`../docs/azure-container-apps.md`](../docs/azure-container-apps.md) for the GitHub image build and step-by-step Azure Portal setup. The container listens on port `8080`. Live mode requires the Container App's Entra authentication provider and a single allowlisted email. Keep Demo mode as the public default.
+See [`../docs/azure-container-apps.md`](../docs/azure-container-apps.md) for the GitHub image build and step-by-step Azure Portal setup. The container listens on port `8080`. Live mode requires the Container App's Entra authentication provider and a single allowlisted email.
 
 Build and run the legacy Azure container locally after setting its runtime configuration. This path is separate from the AWS Cloudflare deployment.
 
@@ -86,4 +86,4 @@ Company logos load through the same-origin `/logos/<domain>` Worker route. Image
 
 ## Product limits
 
-CareerSignal discovers companies and HR/Talent Acquisition contacts and prepares outreach. It does not discover vacancies or send email. The demonstration names, addresses, companies, score values, and match explanations are fictional and must not be presented as real contacts or verified information.
+CareerSignal discovers companies and HR/Talent Acquisition contacts and prepares outreach. It does not discover vacancies or send email. Provider data may be incomplete or out of date; verify current roles, employer affiliations, and contact details before outreach.

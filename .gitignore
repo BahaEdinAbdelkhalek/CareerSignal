@@ -20,3 +20,6 @@ terraform.rc
 # AWS Lambda build artifacts and vendored runtime dependencies.
 aws/build/
 aws/node_modules/
+
+# Ignore new local documentation and diagram files.
+/docs/

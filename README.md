@@ -10,7 +10,6 @@
   <img alt="Azure Functions v4" src="https://img.shields.io/badge/Azure%20Functions-v4-0062AD.svg?style=for-the-badge&logo=azurefunctions&logoColor=white" />
   <img alt="Azure Durable Functions" src="https://img.shields.io/badge/Azure-Durable%20Functions-0062AD.svg?style=for-the-badge&logo=microsoftazure&logoColor=white" />
   <img alt="Cloudflare Workers" src="https://img.shields.io/badge/Cloudflare-Workers-F38020.svg?style=for-the-badge&logo=cloudflare&logoColor=white" />
-  <img alt="Demo uses fictional data" src="https://img.shields.io/badge/Public%20Demo-Fictional%20Data-16865A.svg?style=for-the-badge" />
 </p>
 
 CareerSignal turns a CV and search preferences into a ranked shortlist of relevant companies and HR or Talent Acquisition contacts, then prepares one outreach draft per selected contact. It has an AWS backend path on `main` and an Azure Functions/Durable Functions path on `azure`. It does not discover vacancies, verify that a company is hiring, or send email.
@@ -20,7 +19,7 @@ CareerSignal turns a CV and search preferences into a ranked shortlist of releva
 - `main` is the AWS backend path. It uses S3, DynamoDB, Lambda, Step Functions, API Gateway, Cognito, and Systems Manager Parameter Store. Cloudflare hosts the Angular app and logo proxy; the browser calls API Gateway directly using Cognito.
 - `azure` retains the Azure Functions/Durable Functions implementation. Its hosting and deployment are separate from the AWS implementation.
 
-The Azure branch is a separate implementation, not a deployment target for the current Angular app. Each AWS account must provide execution roles with the permissions described in `infra/aws/README.md`; AWS Academy/Learner Lab roles may impose additional trust-policy and `iam:PassRole` restrictions. Passing local tests does not validate provider access or cloud permissions, so verify a fictional end-to-end run in each target account.
+The Azure branch is a separate implementation, not a deployment target for the current Angular app. Each AWS account must provide execution roles with the permissions described in `infra/aws/README.md`; AWS Academy/Learner Lab roles may impose additional trust-policy and `iam:PassRole` restrictions. Passing local tests does not validate provider access or cloud permissions, so verify the complete end-to-end workflow in each target account.
 
 ## Workflow
 
@@ -28,11 +27,15 @@ The Azure branch is a separate implementation, not a deployment target for the c
 2. Extracts CV text and stores it temporarily in private S3.
 3. Uses a configured Google Gemini or OpenAI-compatible model endpoint to extract evidence-based skills, roles, search keywords, countries, and gaps.
 4. Searches GetProspect for companies and ranks a bounded result set using deterministic matching rules.
-5. Searches those companies for HR/Talent Acquisition contacts, ranks them, and selects no more than five (at most two per company).
-6. Attempts sequential email enrichment for those five contacts only.
+5. Searches those companies for HR/Talent Acquisition contacts, ranks them, and selects up to five per company, with a maximum of 25 overall.
+6. Attempts sequential email enrichment for up to 25 selected contacts.
 7. Generates one editable outreach draft per contact. Recipient name, company, and email come from provider data, not model claims.
 
-GetProspect email enrichment can consume credits. The model endpoint may also charge and receives CV information. Bedrock is not assumed to be available in the Learner Lab. Use fictional CVs for demos; review the exact model API plan's pricing and privacy terms before sending real CVs.
+GetProspect email enrichment and the model endpoint may consume credits or incur charges. The model provider receives CV information, and Bedrock is not assumed to be available in the Learner Lab. Review provider pricing and privacy terms and obtain candidate consent before processing real CVs.
+
+## Architecture
+
+The architecture diagram below describes the repository-defined AWS path; it is not a verification of live AWS resources.
 
 ## Matching model
 
@@ -41,6 +44,8 @@ Company fit is a weighted heuristic: keyword relevance (45%), candidate skills (
 Contact fit uses HR role relevance (65%), company fit (30%), and email availability (5%). Non-HR titles and weak company matches are filtered. Scores are not probabilities; results include score breakdowns and match reasons for inspection.
 
 ## AWS deployment
+
+![CareerSignal AWS deployment architecture](careersignal-architecture-Overview.drawio.svg)
 
 The CloudFormation templates are under [`infra/aws/`](infra/aws/README.md):
 
@@ -66,7 +71,7 @@ The `azure` branch keeps the existing Azure Functions v4, Durable Functions, Blo
 
 ## Frontend and local tests
 
-The Angular app in [`CareerSignal-Web/`](CareerSignal-Web/README.md) has a fictional-data Demo mode and a Live mode through the same-origin Worker gateway. Demo mode never calls the backend or GetProspect. The selected PDF in Demo mode is validated locally but not uploaded or parsed.
+The Angular app in [`CareerSignal-Web/`](CareerSignal-Web/README.md) signs in with Cognito and calls API Gateway directly. Cloudflare serves its static assets, public runtime configuration, and company-logo proxy.
 
 Run the backend and AWS adapter tests from the repository root:
 
@@ -91,5 +96,5 @@ The AWS path has unit tests for request signing, input validation, model-adapter
 - The original PDF is deleted after analysis; lifecycle expiry is a fallback, not an exact deletion deadline.
 - Processing objects are removed after successful completion or failure where possible, with two-day lifecycle expiry as a fallback. Results are configured for 30-day S3 expiry and DynamoDB TTL.
 - Standard Step Functions history remains for up to 90 days and cannot be purged by the delete endpoint. The state machine passes S3 keys and IDs, not CV text, analysis, contacts, or result bodies.
-- The AWS Live path is restricted to one Cloudflare Access identity. Do not expose the gateway HMAC key or status-encryption key. Anyone with the HMAC key can impersonate the Worker to the AWS API.
+- Browser requests to AWS APIs use Cognito access tokens validated by API Gateway. Keep GetProspect and model credentials in SSM SecureString, and the Logo.dev token in a Cloudflare Worker secret. Do not put provider credentials in public runtime configuration.
 - Email drafts are suggestions for human review. Verify the company, recipient's current role, email validity, and internship availability before contacting anyone.
