@@ -53,7 +53,7 @@ The app builds to `dist/careersignal/browser`. Interactive demo covers profile p
 
 This deployment is for the separate Azure Functions path only. It is not the deployment path for the current AWS `main` branch. The single-container app serves Angular and a Node gateway; the Azure Function key is supplied as a Container Apps secret and is never put in Angular configuration.
 
-See [`../docs/azure-container-apps.md`](../docs/azure-container-apps.md) for the GitHub image build and step-by-step Azure Portal setup. The container listens on port `8080`. Live mode requires the Container App's Entra authentication provider and a single allowlisted email.
+See the [Azure Container Apps deployment guide](https://github.com/BahaEdinAbdelkhalek/CareerSignal/blob/azure/docs/azure-container-apps.md) for the GitHub image build and step-by-step Azure Portal setup. The container listens on port `8080`. Live mode requires the Container App's Entra authentication provider and a single allowlisted email.
 
 Build and run the legacy Azure container locally after setting its runtime configuration. This path is separate from the AWS Cloudflare deployment.
 
