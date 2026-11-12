@@ -152,15 +152,114 @@ async function openHandle(handle, env, userId) {
   return { searchId: payload.searchId };
 }
 
-function secureAssetResponse(response) {
+function secureAssetResponse(response, env) {
   const headers = new Headers(response.headers);
   headers.set('x-content-type-options', 'nosniff');
   headers.set('x-frame-options', 'DENY');
   headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
-  headers.set('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  const connectOrigins = [env.CAREERSIGNAL_PUBLIC_API_BASE_URL, env.CAREERSIGNAL_COGNITO_DOMAIN]
+    .filter(value => typeof value === 'string' && value.trim())
+    .map(value => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' ? url.origin : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  headers.set('content-security-policy', `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' ${connectOrigins.join(' ')}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`);
   headers.set('strict-transport-security', 'max-age=31536000');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+function logoResponse(status, cacheControl = 'no-store', additionalHeaders = {}) {
+  return new Response(null, {
+    status,
+    headers: {
+      'cache-control': cacheControl,
+      'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
+      ...additionalHeaders,
+    },
+  });
+}
+
+function normalizeLogoDomain(value) {
+  const domain = value.toLowerCase().replace(/^www\./, '');
+  if (!domain || domain.length > 253 || domain.endsWith('.')) return null;
+  const labels = domain.split('.');
+  if (labels.length < 2 || labels.some(label =>
+    label.length > 63 || !/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(label))) return null;
+  const topLevelDomain = labels[labels.length - 1];
+  if (topLevelDomain.length < 2 || !/^[a-z]/.test(topLevelDomain)) return null;
+  return domain;
+}
+
+async function handleCompanyLogo(request, env, url) {
+  if (request.method !== 'GET') return logoResponse(405);
+  if (url.search) return logoResponse(400);
+
+  const match = url.pathname.match(/^\/logos\/([^/]+)$/);
+  if (!match) return logoResponse(404);
+
+  let requestedDomain;
+  try {
+    requestedDomain = decodeURIComponent(match[1]);
+  } catch {
+    return logoResponse(400);
+  }
+  const domain = normalizeLogoDomain(requestedDomain);
+  if (!domain) return logoResponse(400);
+
+  const token = env.LOGO_DEV_PUBLISHABLE_KEY;
+  if (typeof token !== 'string' || !token.trim()) return logoResponse(503);
+
+  const logoUrl = new URL(`https://img.logo.dev/${domain}`);
+  logoUrl.search = new URLSearchParams({
+    token: token.trim(),
+    size: '128',
+    format: 'png',
+    fallback: '404',
+  }).toString();
+
+  try {
+    const upstream = await fetch(logoUrl, {
+      headers: {
+        accept: 'image/png',
+        referer: `${new URL(request.url).origin}/`,
+      },
+      cf: { cacheTtl: 86400, cacheEverything: true },
+    });
+    if (upstream.status === 404) return logoResponse(404, 'public, max-age=300, s-maxage=300');
+    if (!upstream.ok) {
+      console.warn('Logo.dev logo request returned a non-success status.', { domain, status: upstream.status });
+      return logoResponse(upstream.status);
+    }
+
+    const contentType = (upstream.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+    if (!['image/png', 'image/jpeg', 'image/webp', 'image/avif'].includes(contentType)) {
+      console.warn('Logo.dev returned an unexpected image content type.', { domain, contentType });
+      return logoResponse(502, 'no-store', { 'x-logo-dev-content-type': contentType || 'missing' });
+    }
+
+    return new Response(upstream.body, {
+      status: 200,
+      headers: {
+        'content-type': contentType,
+        'cache-control': 'public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400',
+        'x-content-type-options': 'nosniff',
+        'referrer-policy': 'no-referrer',
+      },
+    });
+  } catch (error) {
+    console.warn('Logo.dev logo request failed before returning an image.', {
+      domain,
+      errorName: error?.name || 'Error',
+    });
+    return logoResponse(502);
+  }
 }
 
 function validateRequestOrigin(request) {
@@ -397,6 +496,39 @@ async function deleteSearch(request, env, userId, handle) {
   return json({ deleted: true });
 }
 
+function handleRuntimeConfiguration(request, env) {
+  if (request.method !== 'GET') return json({ error: 'Method not allowed.' }, 405);
+
+  const config = {
+    apiBaseUrl: env.CAREERSIGNAL_PUBLIC_API_BASE_URL,
+    cognitoDomain: env.CAREERSIGNAL_COGNITO_DOMAIN,
+    cognitoClientId: env.CAREERSIGNAL_COGNITO_CLIENT_ID,
+    linkedinUrl: env.CAREERSIGNAL_PUBLIC_LINKEDIN_URL || '',
+    githubUrl: env.CAREERSIGNAL_PUBLIC_GITHUB_URL || '',
+  };
+  const requiredValues = [config.apiBaseUrl, config.cognitoDomain, config.cognitoClientId];
+  if (requiredValues.some(value => typeof value !== 'string' || !value.trim())) {
+    return json({ error: 'Public frontend configuration is incomplete.' }, 503);
+  }
+
+  try {
+    const apiUrl = new URL(config.apiBaseUrl);
+    const cognitoUrl = new URL(config.cognitoDomain);
+    const socialUrls = [config.linkedinUrl, config.githubUrl].filter(Boolean).map(value => new URL(value));
+    if (
+      apiUrl.protocol !== 'https:' || apiUrl.pathname !== '/' || apiUrl.search || apiUrl.hash || apiUrl.username || apiUrl.password ||
+      cognitoUrl.protocol !== 'https:' || cognitoUrl.pathname !== '/' || cognitoUrl.search || cognitoUrl.hash || cognitoUrl.username || cognitoUrl.password ||
+      socialUrls.some(value => value.protocol !== 'https:' || value.username || value.password)
+    ) {
+      return json({ error: 'Public frontend configuration is invalid.' }, 503);
+    }
+  } catch {
+    return json({ error: 'Public frontend configuration is invalid.' }, 503);
+  }
+
+  return json(config);
+}
+
 async function handleApi(request, env) {
   const path = new URL(request.url).pathname;
   if (path === '/api/access-login' && request.method === 'GET') {
@@ -418,7 +550,9 @@ async function handleApi(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (url.pathname === '/runtime-config.json') return handleRuntimeConfiguration(request, env);
+    if (url.pathname === '/logos' || url.pathname.startsWith('/logos/')) return handleCompanyLogo(request, env, url);
     if (url.pathname.startsWith('/api/')) return handleApi(request, env);
-    return secureAssetResponse(await env.ASSETS.fetch(request));
+    return secureAssetResponse(await env.ASSETS.fetch(request), env);
   },
 };

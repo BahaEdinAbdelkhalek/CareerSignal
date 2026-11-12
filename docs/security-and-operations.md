@@ -1,41 +1,42 @@
 # CareerSignal security and operations checklist
 
-## Before using real candidate CVs
+## Current AWS and Cloudflare deployment
 
-- Publish a clear privacy notice naming Microsoft Azure / the configured Azure AI Foundry deployment and GetProspect as service providers.
-- Define the purpose and lawful basis for processing candidate CVs and professional contact data. Do not assume that uploading a CV automatically authorizes every downstream use.
-- Confirm the applicable Microsoft and GetProspect terms, data-processing agreements, data locations, retention, and international-transfer arrangements for the actual subscriptions and regions.
-- Keep the Function App and storage account non-public where possible. Restrict the Function key and rotate it if it is exposed.
-- Do not put Function keys, Durable management URLs, CV content, API responses or email addresses into client-side analytics or logs.
-- Confirm Key Vault and Blob Storage RBAC for the user-assigned managed identity. Prefer private networking and storage firewall restrictions where available.
-- The application independently enforces the 10 MB PDF limit. On Flex Consumption, `FUNCTIONS_REQUEST_BODY_SIZE_LIMIT` is not used, so enforce a request-size cap at API Management, Front Door, or another ingress layer before public launch.
+### Candidate data and provider use
 
-## Retention behavior in this version
+- Publish a privacy notice explaining that CV content is sent to the configured AI provider for analysis, and that GetProspect is used to search selected companies and HR contacts. Review the exact provider plans, data-processing terms, data locations, retention, and costs before processing real CVs.
+- Use fictional CVs for a public showcase until that review is complete. Do not imply that fictional contacts, scores, or match reasons are verified people or hiring signals.
+- Ask for clear user consent before upload. A CV upload is not automatically permission for every downstream use.
+- The app prepares drafts; it does not send email. Users must verify a contact's current employer, role, and email before outreach.
 
-1. The upload function stores extracted CV text at `{instanceId}/candidate-cv.txt`.
-2. The CV analysis activity deletes that blob in a `finally` block, whether analysis succeeds or fails.
-3. If orchestration startup fails after upload, the HTTP handler deletes the blob.
-4. A daily timer deletes orphaned CV text blobs that remain beyond `CAREERSIGNAL_CV_ORPHAN_RETENTION_HOURS` (default 48 hours).
-5. Durable Task Scheduler autopurge removes terminal orchestration histories after its default 30-day retention period. The retention policy is a scheduler-level resource setting and applies across task hubs on that scheduler.
-6. A caller may purge a terminal workflow sooner with `DELETE /api/career-signal/{instanceId}`.
+### Credentials and browser configuration
 
-The blob-cleanup timer is best-effort operational code, not a substitute for monitoring. Alert on timer failures and test deletion in a non-production task hub before using real candidate data. Durable Task Scheduler autopurge defaults to 30 days for terminal states and can be changed through the scheduler retention policy. Also configure Azure Storage lifecycle management as a secondary safeguard if your deployment retains other blobs in the same storage account/container.
+- Keep model and GetProspect keys in the AWS SSM SecureString configured for the task Lambda. Keep the Logo.dev key in Cloudflare Worker secrets.
+- `/runtime-config.json` may expose only the API origin, Cognito domain/client ID, and optional public profile links. Never add provider keys, AWS credentials, function keys, HMAC keys, or encryption keys to it or to Angular assets.
+- Do not commit `.env`, `.dev.vars`, local settings, credentials, private keys, or deployment state. Example files should contain placeholders only.
+- Run a secret scan over the full Git history before showcase release. If a credential was ever committed or pushed, revoke and rotate it; removing it from the current tree does not invalidate copies in history, builds, or artifacts.
 
-## Matching and recommendation quality
+### Access, retention, and deletion
 
-- Scores are deterministic heuristics. They are ranking aids, not probabilities or hiring predictions.
-- A company profile can be incomplete. Missing metadata can lower a match score even when a company is suitable.
-- A contact's title and employer may be stale. Check current role and company before outreach.
-- `emailStatus: valid` comes from provider data. It does not guarantee deliverability at send time.
-- The service does not identify open vacancies. Never describe a matched company as hiring unless vacancy information has been independently established.
-- Review every generated email for factual accuracy, tone, recipient fit and candidate-specific claims before sending.
+- API Gateway validates Cognito JWTs. The current user pool is configured for administrator-created users, not open public signup. Keep real processing limited to accounts you intentionally create.
+- Uploaded CVs and temporary processing objects are stored in private S3. The workflow deletes the original CV after analysis where possible; the two-day lifecycle rule is a fallback. Results are configured for 30-day expiry. S3 lifecycle and DynamoDB TTL are asynchronous, not exact deletion deadlines.
+- Deleting a search removes its application data from S3 and DynamoDB when allowed. Deletion is rejected while the workflow is running. Step Functions history can remain for up to 90 days and contains identifiers and object-key references; the app cannot purge it.
+- Keep S3 public access blocked, HTTPS enforced, API CORS limited to the exact frontend origin, and IAM permissions scoped to the application resources.
 
-## Production-readiness work not included in this patch
+### Reliability and cost controls
 
-- User sign-in and authorization that binds each orchestration ID to its owner.
-- Per-user rate limits, abuse prevention and quotas.
-- Consent and processing audit records, support workflows and export/delete controls.
-- A user-facing results UI with retry/re-run behavior and manual review of matches.
-- A benchmark dataset measuring company/contact precision, email validity and draft factuality.
-- Load tests, dependency vulnerability scanning, Azure Monitor alerts and deployment rollback.
-- A deployment-specific Bicep/Terraform baseline for identity, Key Vault RBAC, private endpoints, storage policies and Durable Task Scheduler.
+- Model-provider outages (including HTTP 503), GetProspect limits, and Logo.dev failures must surface as errors or missing optional data. Never replace a failed live result with fictional sample results.
+- Monitor Lambda and API Gateway errors, Step Functions failures, throttles, and provider usage. Do not log CV text, prompts, result bodies, email addresses, signed upload URLs, or credentials.
+- Review AWS budgets and provider credit usage. Lambda, API Gateway, Step Functions, S3, DynamoDB, CloudWatch, model calls, and GetProspect usage may incur charges.
+
+### Showcase release gates
+
+- Run the test suites, production build, CloudFormation validation, and secret scan using the documented Node.js 24 runtime.
+- In a production-like deployment, verify: Cognito sign-in; authenticated API calls; company lookup; a fictional CV reaching workflow completion; populated and zero-contact result states; logo loading; and deletion of a completed search.
+- Verify `/runtime-config.json` contains only public settings and that the browser bundle contains no provider keys.
+- Test a rejected unauthenticated request, an invalid/oversized upload, provider failure handling, and a failed workflow. Keep the previous Cloudflare Worker version available for rollback.
+- Do not call the AWS deployment production-verified until these checks have passed against the deployed stack, not only in local unit tests.
+
+## Legacy Azure deployment
+
+The `azure` branch and its Cloudflare Access/Function-key deployment use a separate Azure Functions and Durable Functions path. Its function key, Durable management URLs, Key Vault, Blob Storage, cleanup timer, and scheduler retention instructions apply only to that legacy deployment. Do not use those settings for the current AWS/Cognito deployment.

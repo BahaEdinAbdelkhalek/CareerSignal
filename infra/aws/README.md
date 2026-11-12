@@ -10,7 +10,7 @@ The AWS model adapter supports **Google Gemini** (`generateContent`) and OpenAI-
 
 ### Foundation: `foundation.yml`
 
-Creates a private, SSE-S3-encrypted S3 bucket and an on-demand DynamoDB table. It creates no roles or compute. Set `AllowedOrigin` to the exact HTTPS Cloudflare Pages origin so the browser can upload PDFs to S3.
+Creates a private, SSE-S3-encrypted S3 bucket and an on-demand DynamoDB table. Both are retained if the stack is deleted or either resource is replaced, to prevent accidental data loss. It creates no roles or compute. Set `AllowedOrigin` to the exact HTTPS Cloudflare Worker origin so the browser can upload PDFs to S3.
 
 - CV objects under `cv/` and processing objects under `jobs/` are set to expire after two days.
 - Results under `results/` are set to expire after 30 days.
@@ -18,7 +18,7 @@ Creates a private, SSE-S3-encrypted S3 bucket and an on-demand DynamoDB table. I
 
 ### Application: `application.yml`
 
-Reuses the foundation bucket/table and existing IAM roles. It creates a Cognito user pool/client/domain, API Gateway HTTP API with a Cognito JWT authorizer and origin-restricted CORS, two Node.js 24 Lambda functions, a Standard Step Functions state machine, and Lambda log groups with seven-day retention. The API stage is throttled to 2 requests per second with a burst of 4, and each Lambda is capped at 2 concurrent executions. No model endpoint, API key, IAM role, static frontend host, or custom domain is created. Set `AllowedOrigin` to the exact HTTPS Cloudflare Pages origin and choose a globally unique `CognitoDomainPrefix`.
+Reuses the foundation bucket/table and existing IAM roles. It creates a Cognito user pool/client/domain, API Gateway HTTP API with a Cognito JWT authorizer and origin-restricted CORS, two Node.js 24 Lambda functions, a Standard Step Functions state machine, and Lambda log groups with seven-day retention. The API stage is throttled to 2 requests per second with a burst of 4, and each Lambda is capped at 2 concurrent executions. No model endpoint, API key, IAM role, static frontend host, or custom domain is created. Set `AllowedOrigin` to the exact HTTPS Cloudflare Worker origin and choose a globally unique `CognitoDomainPrefix`.
 
 The Step Functions state contains owner/search IDs and S3 object keys, not CV text, analysis, contacts, or results. Standard execution history still retains those references for up to 90 days and cannot be purged by the app's delete endpoint. Result bodies live in S3 and are configured for 30-day expiry.
 
@@ -58,12 +58,12 @@ aws cloudformation validate-template --template-body file://infra/aws/applicatio
 
 Then proceed only if the role checks above are confirmed:
 
-1. In CloudFormation, create a stack from `infra/aws/foundation.yml`, named `careersignal-aws-foundation`. Set `AllowedOrigin` to your Cloudflare Pages origin (for example `https://your-project.pages.dev`). Review the change set; save the `CvBucketName` and `SearchesTableName` outputs.
+1. In CloudFormation, create a stack from `infra/aws/foundation.yml`, named `careersignal-aws-foundation`. Set `AllowedOrigin` to the exact public Cloudflare Worker origin (for example `https://careersignal.<your-account>.workers.dev`). Review the change set; save the `CvBucketName` and `SearchesTableName` outputs.
 2. Build the Lambda zip as described above. Upload it to the foundation bucket using the S3 console, at `artifacts/careersignal-aws.zip`.
 3. In Systems Manager → Parameter Store, create a **Standard SecureString** named `/careersignal/providers`. Its JSON value must have `getProspectApiKey` and `modelApiKey`. Do not paste keys into chat, source files, or terminal command history. Do not use real keys until you are ready to incur provider usage.
 4. Create a second CloudFormation stack from `infra/aws/application.yml`, named `careersignal-aws-app`. Set the foundation bucket/table, artifact bucket/key, SecureString name, model provider/endpoint/name, existing role ARNs, the same `AllowedOrigin`, and a unique `CognitoDomainPrefix`. For Gemini, use provider `gemini`, endpoint `https://generativelanguage.googleapis.com/v1beta`, and a currently available model ID. Review the change set; it should not create IAM roles.
 5. Create a Cognito user in the new pool with verified email, then set a permanent password. For example, use `aws cognito-idp admin-create-user --user-pool-id POOL_ID --username YOUR_EMAIL --user-attributes Name=email,Value=YOUR_EMAIL Name=email_verified,Value=true --message-action SUPPRESS`, followed by `aws cognito-idp admin-set-user-password --user-pool-id POOL_ID --username YOUR_EMAIL --password 'A-Strong-Unique-Password' --permanent`. Do not put the password in shared shell history.
-6. Set `CareerSignal-Web/src/environments/environment.ts` `apiBaseUrl`, `cognitoDomain`, and `cognitoClientId` from the stack outputs. These are public client configuration, not secrets. Build the Angular app (`npm run build`) and deploy the contents of `CareerSignal-Web/dist/careersignal/browser/` to Cloudflare Pages. Use the identical Pages origin for both stacks.
+6. Before deploying the frontend, set these Cloudflare Worker variables from the application stack outputs: `CAREERSIGNAL_PUBLIC_API_BASE_URL` = `ApiBaseUrl`, `CAREERSIGNAL_COGNITO_DOMAIN` = `CognitoDomain`, and `CAREERSIGNAL_COGNITO_CLIENT_ID` = `CognitoUserPoolClientId`. They are public client configuration, not secrets. The Worker serves them through `/runtime-config.json`. Keep existing values in place during a frontend update, then build and deploy `CareerSignal-Web` with Wrangler. Use the exact same Worker origin for both stacks.
 7. Test login, then run the workflow with a fictional PDF. Verify direct browser requests without a token fail, the authenticated workflow reaches `Completed`, and deleting a search removes its S3/DynamoDB application data.
 
 The browser uploads PDFs to S3 through a five-minute presigned URL. Lambda checks uploaded object size and PDF format before processing. The original PDF and extracted text are deleted during analysis; S3 lifecycle rules are fallback cleanup.
@@ -83,4 +83,4 @@ Do not put these values in this repository. The model endpoint and model name ar
 
 ## Cleanup and retention
 
-The app delete endpoint removes a completed/failed search's DynamoDB row and associated S3 CV, processing, and result objects. It rejects deletion while a workflow is running. S3 lifecycle and DynamoDB TTL are fallback cleanup and may run later than the configured age. Step Functions history is not purged; it contains only IDs and object-key references. To remove the stack, first delete the application stack, remove the uploaded Lambda artifact and all remaining objects from the foundation bucket, delete the SSM parameter, then delete the foundation stack. Deleting the table permanently deletes its rows.
+The app delete endpoint removes a completed/failed search's DynamoDB row and associated S3 CV, processing, and result objects. It rejects deletion while a workflow is running. S3 lifecycle and DynamoDB TTL are fallback cleanup and may run later than the configured age. Step Functions history is not purged; it contains only IDs and object-key references. To remove the stack, first delete the application stack and the SSM parameter. The foundation stack retains its bucket and table when deleted. After confirming you no longer need the data, empty and delete the bucket, then delete the DynamoDB table manually. This is intentionally explicit because deleting the table permanently removes its rows.

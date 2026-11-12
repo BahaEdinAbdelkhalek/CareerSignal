@@ -68,7 +68,12 @@ function toApiEvent(url, init) {
 
 test('serves assets and proxies owner-bound, signed workflow requests to AWS', async () => {
   const { token, jwk } = await sharedAccessAssertion;
-  const env = createEnvironment();
+  const env = {
+    ...createEnvironment(),
+    CAREERSIGNAL_PUBLIC_API_BASE_URL: AWS_API_ORIGIN,
+    CAREERSIGNAL_COGNITO_DOMAIN: 'https://careersignal.auth.us-east-1.amazoncognito.com',
+    CAREERSIGNAL_COGNITO_CLIENT_ID: 'public-client-id',
+  };
   const originalFetch = globalThis.fetch;
   const apiRequests = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -96,6 +101,10 @@ test('serves assets and proxies owner-bound, signed workflow requests to AWS', a
   try {
     const staticResponse = await worker.fetch(new Request('https://careersignal.example/'), env);
     assert.equal(await staticResponse.text(), 'static app');
+    assert.match(
+      staticResponse.headers.get('content-security-policy'),
+      /connect-src 'self' https:\/\/aws-api\.example https:\/\/careersignal\.auth\.us-east-1\.amazoncognito\.com/,
+    );
 
     const unauthenticated = await worker.fetch(new Request('https://careersignal.example/api/searches', {
       method: 'POST',
@@ -229,4 +238,125 @@ test('uploads PDFs to a short-lived S3 URL without returning the signed URL to t
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test('serves Logo.dev company logos through same-origin image requests without auth headers', async () => {
+  const env = { ...createEnvironment(), LOGO_DEV_PUBLISHABLE_KEY: 'pk_test_logo_secret' };
+  const originalFetch = globalThis.fetch;
+  let upstreamUrl;
+  let upstreamInit;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    upstreamUrl = new URL(url);
+    upstreamInit = init;
+    return new Response(new Uint8Array([137, 80, 78, 71]), { headers: { 'content-type': 'image/png' } });
+  };
+
+  try {
+    const response = await worker.fetch(new Request('https://careersignal.example/logos/www.pwc.com'), env);
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('content-type'), 'image/png');
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(response.headers.get('cache-control'), /s-maxage=86400/);
+    assert.deepEqual([...new Uint8Array(await response.arrayBuffer())], [137, 80, 78, 71]);
+    assert.equal(upstreamUrl.origin, 'https://img.logo.dev');
+    assert.equal(upstreamUrl.pathname, '/pwc.com');
+    assert.equal(upstreamUrl.searchParams.get('token'), 'pk_test_logo_secret');
+    assert.equal(upstreamUrl.searchParams.get('fallback'), '404');
+    assert.equal(upstreamInit.headers.accept, 'image/png');
+    assert.equal(upstreamInit.headers.referer, 'https://careersignal.example/');
+    assert.ok(![...response.headers.values()].join(' ').includes('pk_test_logo_secret'));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('rejects invalid logo domains without contacting Logo.dev', async () => {
+  const env = { ...createEnvironment(), LOGO_DEV_PUBLISHABLE_KEY: 'pk_test_logo_secret' };
+  const originalFetch = globalThis.fetch;
+  let logoRequests = 0;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.startsWith('https://img.logo.dev/')) logoRequests += 1;
+    throw new Error(`Unexpected outbound request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request('https://careersignal.example/logos/not_a_domain'), env);
+    assert.equal(response.status, 400);
+    assert.equal(logoRequests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('returns service unavailable when the Logo.dev secret is missing', async () => {
+  const env = createEnvironment();
+  const originalFetch = globalThis.fetch;
+  let logoRequests = 0;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.startsWith('https://img.logo.dev/')) logoRequests += 1;
+    throw new Error(`Unexpected outbound request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request('https://careersignal.example/logos/example.com'), env);
+    assert.equal(response.status, 503);
+    assert.equal(logoRequests, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('returns not found when Logo.dev has no logo for a domain', async () => {
+  const env = { ...createEnvironment(), LOGO_DEV_PUBLISHABLE_KEY: 'pk_test_logo_secret' };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.startsWith('https://img.logo.dev/')) return new Response(null, { status: 404 });
+    throw new Error(`Unexpected outbound request: ${url}`);
+  };
+
+  try {
+    const response = await worker.fetch(new Request('https://careersignal.example/logos/unknown.example'), env);
+    assert.equal(response.status, 404);
+    assert.equal(response.headers.get('cache-control'), 'public, max-age=300, s-maxage=300');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('serves public deployment configuration without exposing Worker secrets', async () => {
+  const env = {
+    ...createEnvironment(),
+    CAREERSIGNAL_PUBLIC_API_BASE_URL: 'https://api.example.com',
+    CAREERSIGNAL_COGNITO_DOMAIN: 'https://careersignal.auth.us-east-1.amazoncognito.com',
+    CAREERSIGNAL_COGNITO_CLIENT_ID: 'public-client-id',
+    LOGO_DEV_PUBLISHABLE_KEY: 'logo-key-must-stay-server-side',
+  };
+  const response = await worker.fetch(new Request('https://careersignal.example/runtime-config.json'), env);
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store, private');
+  assert.deepEqual(body, {
+    apiBaseUrl: 'https://api.example.com',
+    cognitoDomain: 'https://careersignal.auth.us-east-1.amazoncognito.com',
+    cognitoClientId: 'public-client-id',
+    linkedinUrl: '',
+    githubUrl: '',
+  });
+  assert.ok(!JSON.stringify(body).includes('logo-key-must-stay-server-side'));
+});
+
+test('fails closed when deployment configuration is incomplete', async () => {
+  const env = {
+    ...createEnvironment(),
+    CAREERSIGNAL_PUBLIC_API_BASE_URL: 'https://api.example.com',
+  };
+  const response = await worker.fetch(new Request('https://careersignal.example/runtime-config.json'), env);
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: 'Public frontend configuration is incomplete.' });
 });

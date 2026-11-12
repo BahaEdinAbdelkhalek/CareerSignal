@@ -1,6 +1,11 @@
-CAREERSIGNAL_FUNCTION_APP_URL="https://<function-app>.azurewebsites.net"
-CAREERSIGNAL_FUNCTION_KEY="replace-with-the-rotated-function-key"
-ACCESS_ISSUER="https://<team-name>.cloudflareaccess.com"
-ACCESS_AUD="<cloudflare-access-application-audience>"
-CAREERSIGNAL_ALLOWED_EMAIL="<your-authorized-email>"
-CAREERSIGNAL_STATUS_ENCRYPTION_KEY="<64-hex-character-random-key>"
+# Public AWS/Cognito settings for the frontend. These are not secrets.
+CAREERSIGNAL_PUBLIC_API_BASE_URL="https://<api-id>.execute-api.<region>.amazonaws.com"
+CAREERSIGNAL_COGNITO_DOMAIN="https://<domain-prefix>.auth.<region>.amazoncognito.com"
+CAREERSIGNAL_COGNITO_CLIENT_ID="<public-user-pool-client-id>"
+
+# Optional links shown in the header.
+CAREERSIGNAL_PUBLIC_LINKEDIN_URL="https://www.linkedin.com/in/<your-profile>/"
+CAREERSIGNAL_PUBLIC_GITHUB_URL="https://github.com/<your-account>"
+
+# Local preview only. In production, set this with `wrangler secret put`.
+LOGO_DEV_PUBLISHABLE_KEY="<Logo.dev key for local preview>"

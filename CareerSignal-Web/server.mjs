@@ -37,17 +37,28 @@ function limitForUser(userId) {
   return { success: true };
 }
 
-function secureStaticHeaders(headers) {
+function secureStaticHeaders(headers, env) {
   headers.set('x-content-type-options', 'nosniff');
   headers.set('x-frame-options', 'DENY');
   headers.set('referrer-policy', 'strict-origin-when-cross-origin');
   headers.set('permissions-policy', 'camera=(), microphone=(), geolocation=()');
-  headers.set('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+  const connectOrigins = [env.CAREERSIGNAL_PUBLIC_API_BASE_URL, env.CAREERSIGNAL_COGNITO_DOMAIN]
+    .filter(value => typeof value === 'string' && value.trim())
+    .map(value => {
+      try {
+        const url = new URL(value);
+        return url.protocol === 'https:' ? url.origin : null;
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+  headers.set('content-security-policy', `default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; script-src 'self'; connect-src 'self' ${connectOrigins.join(' ')}; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'`);
   headers.set('strict-transport-security', 'max-age=31536000');
   return headers;
 }
 
-function makeAssetFetcher(assetDirectory) {
+function makeAssetFetcher(assetDirectory, env) {
   const root = resolve(assetDirectory);
   return async request => {
     const pathname = decodeURIComponent(new URL(request.url).pathname);
@@ -69,7 +80,7 @@ function makeAssetFetcher(assetDirectory) {
       const headers = secureStaticHeaders(new Headers({
         'content-type': MIME_TYPES[extname(filePath).toLowerCase()] || 'application/octet-stream',
         'cache-control': filePath.endsWith('index.html') ? 'no-cache' : 'public, max-age=31536000, immutable',
-      }));
+      }), env);
       return new Response(content, { headers });
     } catch {
       return new Response('Not found', { status: 404 });
@@ -94,7 +105,7 @@ export function createCareerSignalServer({ env = process.env, assetDirectory = f
   const gatewayEnv = {
     ...env,
     SEARCH_SUBMIT_LIMITER: { limit: ({ key }) => limitForUser(key) },
-    ASSETS: { fetch: makeAssetFetcher(assetDirectory) },
+    ASSETS: { fetch: makeAssetFetcher(assetDirectory, env) },
   };
 
   return createServer(async (incoming, outgoing) => {

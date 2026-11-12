@@ -12,7 +12,8 @@ Parameters:
 Resources:
   CareerSignalCvBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
@@ -74,7 +75,8 @@ Resources:
 
   CareerSignalSearchesTable:
     Type: AWS::DynamoDB::Table
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:

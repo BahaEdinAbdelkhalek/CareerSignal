@@ -17,10 +17,10 @@ CareerSignal turns a CV and search preferences into a ranked shortlist of releva
 
 ## Platform branches
 
-- `main` is the AWS backend path. It uses S3, DynamoDB, Lambda, Step Functions, API Gateway, and Systems Manager Parameter Store. The public Angular app and Access gateway remain on Cloudflare for now.
+- `main` is the AWS backend path. It uses S3, DynamoDB, Lambda, Step Functions, API Gateway, Cognito, and Systems Manager Parameter Store. Cloudflare hosts the Angular app and logo proxy; the browser calls API Gateway directly using Cognito.
 - `azure` retains the Azure Functions/Durable Functions implementation. Its hosting and deployment are separate from the AWS implementation.
 
-Both paths are intended to preserve the same workflow and browser API behavior. The AWS code and CloudFormation are local and **have not been deployed or verified in the AWS Academy account**. Its use of `LabRole` is still subject to the lab's trust-policy, permission, and `iam:PassRole` limits. Do not treat the AWS path as live until those checks pass and a fictional end-to-end test succeeds.
+The Azure branch is a separate implementation, not a deployment target for the current Angular app. Each AWS account must provide execution roles with the permissions described in `infra/aws/README.md`; AWS Academy/Learner Lab roles may impose additional trust-policy and `iam:PassRole` restrictions. Passing local tests does not validate provider access or cloud permissions, so verify a fictional end-to-end run in each target account.
 
 ## Workflow
 
@@ -47,7 +47,7 @@ The CloudFormation templates are under [`infra/aws/`](infra/aws/README.md):
 - `foundation.yml` creates private, encrypted S3 storage and an on-demand DynamoDB table. CV and processing objects expire after two days; results after 30 days. S3 lifecycle and DynamoDB TTL cleanup are asynchronous.
 - `application.yml` creates an HTTP API, Node.js 24 Lambda handlers, a Standard Step Functions workflow, and seven-day Lambda log retention. It reuses existing role ARNs and creates no IAM roles.
 
-The AWS API accepts only signed requests from the Cloudflare Worker. The Worker verifies the configured Cloudflare Access identity and allowlisted email, applies a rate limit, and keeps search handles opaque and owner-bound. PDF uploads use a short-lived presigned S3 URL. See [`docs/aws-cloudflare-gateway.md`](docs/aws-cloudflare-gateway.md) and follow the role/budget checks in [`infra/aws/README.md`](infra/aws/README.md) before provisioning.
+The current Angular app signs in through Cognito and sends its access token directly to the AWS API Gateway, which validates the Cognito JWT. Cloudflare serves the frontend and company-logo proxy. The Worker provides deployment-specific public API/Cognito settings at `/runtime-config.json`; it never returns provider credentials. PDF uploads use a short-lived presigned S3 URL. See [`CareerSignal-Web/README.md`](CareerSignal-Web/README.md) and follow the role/budget checks in [`infra/aws/README.md`](infra/aws/README.md) before provisioning. The separate Worker Access/HMAC API code is legacy and is not the frontend's current request path.
 
 The package requires Node.js 24 and a Linux build environment such as AWS CloudShell:
 

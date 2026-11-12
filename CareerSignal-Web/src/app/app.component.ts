@@ -1,9 +1,10 @@
 import { Component } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { DemoDataService } from './demo-data.service';
+
 import { CareerSignalApiService } from './career-signal-api.service';
 import { CareerSignalResult, Company, Contact, Draft, Preferences } from './models';
+import { environment } from '../environments/environment';
 
 
 type CountryOption = { code: string; name: string };
@@ -19,62 +20,94 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
   template: `
     <header class="app-header">
       <a class="brand" href="#workspace"><img class="brand-logo" src="/assets/careersignal-logo.png" alt="CareerSignal"></a>
-      <button class="mode-label mode-toggle" type="button" (click)="toggleMode()" [attr.aria-label]="liveMode ? 'Switch to demo mode' : 'Sign in for live search'">{{ liveMode ? 'Live' : 'Demo' }}</button>
+      <nav *ngIf="linkedinUrl || githubUrl" class="social-links" aria-label="Social profiles">
+        <a *ngIf="linkedinUrl" [href]="linkedinUrl" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn profile" title="LinkedIn">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.26 2.37 4.26 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.56V9h3.56v11.45ZM22.23 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.23 0Z"/></svg>
+        </a>
+        <a *ngIf="githubUrl" [href]="githubUrl" target="_blank" rel="noopener noreferrer" aria-label="GitHub profile" title="GitHub">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 .297a12 12 0 0 0-3.79 23.4c.6.111.82-.261.82-.577v-2.234c-3.338.726-4.043-1.416-4.043-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.09-.745.083-.729.083-.729 1.205.084 1.84 1.237 1.84 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.775.418-1.305.762-1.605-2.665-.304-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.536-1.524.117-3.176 0 0 1.008-.323 3.3 1.23a11.5 11.5 0 0 1 3-.404c1.02.005 2.047.138 3 .404 2.29-1.553 3.296-1.23 3.296-1.23.655 1.653.243 2.873.12 3.176.77.84 1.233 1.91 1.233 3.221 0 4.61-2.807 5.624-5.48 5.921.43.372.814 1.102.814 2.222v3.293c0 .319.216.694.825.576A12.001 12.001 0 0 0 12 .297Z"/></svg>
+        </a>
+      </nav>
     </header>
 
-    <main id="workspace" class="app-shell">
+    <main id="workspace" class="app-shell" [class.form-wizard-active]="!result">
       <aside class="left-column">
         <section *ngIf="!result" class="panel upload-panel">
-          <div class="panel-heading">
-            <div><h1>{{ reviewing ? 'Review search' : 'Start a search' }}</h1></div>
+          <div *ngIf="reviewing" class="panel-heading"><div><h1>Review search</h1></div></div>
 
-          </div>
-
-          <form *ngIf="!reviewing" (submit)="submit($event)" novalidate>
-            <label class="field-label" for="cv">CV <span>PDF, max 10 MB</span></label>
-            <label class="upload-zone" for="cv" [class.has-file]="file" (dragover)="allowDrop($event)" (drop)="dropFile($event)">
-              <input id="cv" type="file" accept="application/pdf,.pdf" (change)="selectFile($event)">
-              <span class="upload-mark">+</span>
-              <strong>{{ file?.name || 'Choose a PDF or drop it here' }}</strong>
-              <small>{{ file ? (file.size / 1024 / 1024 | number:'1.1-1') + ' MB' : (liveMode ? 'Uploaded after confirmation' : 'Stays on this device in demo mode') }}</small>
-            </label>
-            <div *ngIf="fileError" class="error-text" role="alert">{{ fileError }}</div>
-
-            <div class="field target-company-field">
-              <span>Companies to search <small>Required · 1–5</small></span>
-              <div class="target-company-chips" aria-label="Selected companies">
-                <span class="target-company-chip" *ngFor="let company of selectedCompanies">
-                  <span class="company-picker-logo"><span>{{ companyInitials(company.name) }}</span><img *ngIf="companyLogoUrlFor(company) as logoUrl" [src]="logoUrl" alt="" loading="lazy" (error)="$any($event.target).hidden=true"></span>
-                  <span class="target-company-name">{{ company.name }}</span>
-                  <button type="button" [attr.aria-label]="'Remove '+company.name" (click)="removeCompany(company)">×</button>
-                </span>
-              </div>
-              <div class="company-search-control"><input [(ngModel)]="companySearch" name="companySearch" placeholder="Search company name" aria-label="Company name" autocomplete="off" maxlength="100" [disabled]="selectedCompanies.length >= 5" (keydown)="companyKeydown($event)"><button class="button secondary" type="button" (click)="lookupCompanyMatches()" [disabled]="companyLookupBusy || selectedCompanies.length >= 5 || !companySearch.trim()">{{ companyLookupBusy ? 'Searching…' : 'Search' }}</button></div>
-              <div class="company-options" *ngIf="showCompanyOptions && companyResults.length" role="listbox" aria-label="Company search results">
-                <button type="button" role="option" *ngFor="let company of companyResults" (click)="selectCompany(company)"><span class="company-picker-logo"><span>{{ companyInitials(company.name) }}</span><img *ngIf="companyLogoUrlFor(company) as logoUrl" [src]="logoUrl" alt="" loading="lazy" (error)="$any($event.target).hidden=true"></span><span class="company-option-copy"><strong>{{ company.name }}</strong><small>{{ company.industry || company.domain || company.website || 'Company' }}</small></span></button>
-              </div>
-              <small *ngIf="!liveMode" class="targeting-hint">Switch to Live mode to search GetProspect and load company logos.</small>
-              <div *ngIf="companyLookupError" class="error-text" role="alert">{{ companyLookupError }}</div>
-              <div *ngIf="targetingError" class="error-text" role="alert">{{ targetingError }}</div>
+          <form *ngIf="!reviewing" class="guided-form" (submit)="submit($event)" novalidate>
+            <div class="wizard-progress-header">
+              <div class="wizard-progress-track" role="progressbar" [attr.aria-valuenow]="wizardStep + 1" [attr.aria-valuemin]="1" [attr.aria-valuemax]="wizardSteps.length"><span [style.width.%]="wizardProgress"></span></div>
+              <div class="wizard-title-block"><h2>{{ wizardSteps[wizardStep].title }}</h2></div>
             </div>
 
-            <div class="field contact-type-field">
-              <span>People to find <small>Choose one or more</small></span>
-              <div class="contact-type-options"><label class="contact-type-option" *ngFor="let type of contactTypeOptions"><input type="checkbox" [checked]="selectedContactTypes.includes(type)" (change)="toggleContactType(type, $any($event.target).checked)"><span>{{ type }}</span></label></div>
-              <div class="selected-contact-types"><span class="contact-type-chip" *ngFor="let type of customContactTypes">{{ type }}<button type="button" [attr.aria-label]="'Remove '+type" (click)="removeContactType(type)">×</button></span></div>
-              <div class="custom-contact-entry"><input [(ngModel)]="customContactTitle" name="customContactTitle" placeholder="Add another HR or recruiting title" aria-label="Other HR or recruiting title" maxlength="100" (keydown)="contactTitleKeydown($event)"><button class="button secondary" type="button" (click)="addCustomContactType()">Add title</button></div>
-              <div *ngIf="contactTypeError" class="error-text" role="alert">{{ contactTypeError }}</div>
-              <small class="targeting-hint">Only contacts with the selected HR or recruiting titles will be searched.</small>
+            <div *ngIf="wizardStep > 0 && file" class="wizard-file-summary"><span class="wizard-file-check" aria-hidden="true">✓</span><span><small>{{ file.name }}</small></span><button type="button" (click)="goToWizardStep(0)">Change</button></div>
+
+            <div class="wizard-stage" [class.backward]="wizardDirection === 'backward'" [ngSwitch]="wizardStep">
+              <section *ngSwitchCase="0" class="wizard-step">
+                <label class="field-label" for="cv">Upload your CV <span>PDF, max 10 MB</span></label>
+                <label class="upload-zone wizard-upload-zone" for="cv" [class.has-file]="file" (dragover)="allowDrop($event)" (drop)="dropFile($event)">
+                  <input id="cv" type="file" accept="application/pdf,.pdf" (change)="selectFile($event)">
+                  <span class="upload-mark">+</span>
+                  <strong>{{ file?.name || 'Choose a PDF or drop it here' }}</strong>
+                  <small>{{ file ? (file.size / 1024 / 1024 | number:'1.1-1') + ' MB' : 'Uploaded after confirmation' }}</small>
+                </label>
+                <div *ngIf="fileError" class="error-text" role="alert">{{ fileError }}</div>
+              </section>
+
+              <section *ngSwitchCase="1" class="wizard-step">
+                <div class="field target-company-field">
+                  <span>Companies to search</span>
+                  <div class="target-company-chips" aria-label="Selected companies">
+                    <span class="target-company-chip" *ngFor="let company of selectedCompanies">
+                      <span class="company-picker-logo"><span>{{ companyInitials(company.name) }}</span><img *ngIf="companyLogoUrlFor(company) as logoUrl" [src]="logoUrl" alt="" loading="lazy" (error)="fallbackCompanyLogo($event, company)"></span>
+                      <span class="target-company-name">{{ company.name }}</span>
+                      <button type="button" [attr.aria-label]="'Remove '+company.name" (click)="removeCompany(company)">×</button>
+                    </span>
+                  </div>
+                  <div class="company-search-control"><input [(ngModel)]="companySearch" name="companySearch" placeholder="Search a company, such as PwC" aria-label="Company name" autocomplete="off" maxlength="100" [disabled]="selectedCompanies.length >= 5" (keydown)="companyKeydown($event)"><button class="button secondary" type="button" (click)="lookupCompanyMatches()" [disabled]="companyLookupBusy || selectedCompanies.length >= 5 || !companySearch.trim()">{{ companyLookupBusy ? 'Searching…' : 'Search' }}</button></div>
+                  <div class="company-options" *ngIf="showCompanyOptions && companyResults.length" role="listbox" aria-label="Company search results">
+                    <button type="button" role="option" *ngFor="let company of companyResults" (click)="selectCompany(company)"><span class="company-picker-logo"><span>{{ companyInitials(company.name) }}</span><img *ngIf="companyLogoUrlFor(company) as logoUrl" [src]="logoUrl" alt="" loading="lazy" (error)="fallbackCompanyLogo($event, company)"></span><span class="company-option-copy"><strong>{{ company.name }}</strong><small>{{ company.industry || company.domain || company.website || 'Company' }}</small></span></button>
+                  </div>
+
+                  <div *ngIf="companyLookupError" class="error-text" role="alert">{{ companyLookupError }}</div>
+                  <div *ngIf="targetingError" class="error-text" role="alert">{{ targetingError }}</div>
+                </div>
+              </section>
+
+              <section *ngSwitchCase="2" class="wizard-step">
+                <div class="field contact-type-field">
+                  <span>People to find</span>
+                  <div class="contact-type-options"><label class="contact-type-option" *ngFor="let type of contactTypeOptions"><input type="checkbox" [checked]="selectedContactTypes.includes(type)" (change)="toggleContactType(type, $any($event.target).checked)"><span>{{ type }}</span></label></div>
+                  <div class="selected-contact-types"><span class="contact-type-chip" *ngFor="let type of customContactTypes">{{ type }}<button type="button" [attr.aria-label]="'Remove '+type" (click)="removeContactType(type)">×</button></span></div>
+                  <div class="custom-contact-entry"><input [(ngModel)]="customContactTitle" name="customContactTitle" placeholder="Add another HR or recruiting title" aria-label="Other HR or recruiting title" maxlength="100" (keydown)="contactTitleKeydown($event)"><button class="button secondary" type="button" (click)="addCustomContactType()">Add title</button></div>
+                  <div *ngIf="contactTypeError" class="error-text" role="alert">{{ contactTypeError }}</div>
+
+                </div>
+              </section>
+
+              <section *ngSwitchCase="3" class="wizard-step">
+                <div class="field role-field"><span>Target roles <small>Optional</small></span><div class="role-picker"><div class="selected-roles"><span class="role-chip" *ngFor="let role of selectedRoles">{{ role }}<button type="button" [attr.aria-label]="'Remove '+role" (click)="removeRole(role)">×</button></span><input [(ngModel)]="roleSearch" name="roleSearch" placeholder="Search job titles" autocomplete="off" (focus)="showRoleOptions=true" (input)="showRoleOptions=true" (keydown)="roleKeydown($event)"></div><div class="role-options" *ngIf="showRoleOptions && filteredRoles.length" role="listbox"><button type="button" role="option" [attr.aria-selected]="selectedRoles.includes(role)" *ngFor="let role of filteredRoles" (mousedown)="$event.preventDefault()" (click)="toggleRole(role)"><span class="role-check" aria-hidden="true">{{ selectedRoles.includes(role) ? '✓' : '' }}</span><span>{{ role }}</span></button></div></div></div>
+              </section>
+
+              <section *ngSwitchCase="4" class="wizard-step">
+                <div class="field-grid wizard-field-grid">
+                  <div class="field"><span>Preferred countries <small>Optional</small></span><div class="country-picker"><div class="selected-countries"><span class="country-chip" *ngFor="let country of selectedCountries"><img class="country-flag" [src]="flagImage(country.code)" alt="" loading="lazy" (error)="$any($event.target).hidden=true; $any($event.target.nextElementSibling).hidden=false"><span class="country-code-fallback" aria-hidden="true" hidden>{{ country.code }}</span><span>{{ country.name }}</span><button type="button" [attr.aria-label]="'Remove '+country.name" (click)="removeCountry(country.code)">×</button></span><input [(ngModel)]="countrySearch" name="countrySearch" placeholder="Search countries" autocomplete="off" (focus)="showCountryOptions=true" (input)="showCountryOptions=true" (keydown)="countryKeydown($event)"></div><div class="country-options" *ngIf="showCountryOptions && filteredCountries.length" role="listbox"><button type="button" role="option" [attr.aria-selected]="false" *ngFor="let country of filteredCountries" (mousedown)="$event.preventDefault()" (click)="addCountry(country)"><img class="country-flag" [src]="flagImage(country.code)" alt="" loading="lazy" (error)="$any($event.target).hidden=true"><span>{{ country.name }}</span><small>{{ country.code }}</small></button></div></div></div>
+                  <label class="field"><span>Internship duration</span><select [(ngModel)]="preferences.internshipDuration" name="duration"><option value="">Select duration</option><option>3 months</option><option>6 months</option><option>12 months</option><option>Flexible</option></select></label>
+                  <label class="field"><span>Start date</span><input [(ngModel)]="preferences.startDate" name="startDate" type="month"></label>
+                </div>
+              </section>
+
+              <section *ngSwitchCase="5" class="wizard-step">
+                <label class="field wizard-requirements"><span>Additional requirements <small>Optional</small></span><textarea [(ngModel)]="preferences.additionalRequirements" name="requirements" rows="5" placeholder="Work authorization, industries, or anything else we should consider"></textarea></label>
+              </section>
             </div>
 
-            <div class="field-grid">
-              <div class="field"><span>Target roles</span><div class="role-picker"><div class="selected-roles"><span class="role-chip" *ngFor="let role of selectedRoles">{{ role }}<button type="button" [attr.aria-label]="'Remove '+role" (click)="removeRole(role)">×</button></span><input [(ngModel)]="roleSearch" name="roleSearch" placeholder="Search job titles" autocomplete="off" (focus)="showRoleOptions=true" (input)="showRoleOptions=true" (keydown)="roleKeydown($event)"></div><div class="role-options" *ngIf="showRoleOptions && filteredRoles.length" role="listbox"><button type="button" role="option" [attr.aria-selected]="selectedRoles.includes(role)" *ngFor="let role of filteredRoles" (mousedown)="$event.preventDefault()" (click)="toggleRole(role)"><span class="role-check" aria-hidden="true">{{ selectedRoles.includes(role) ? '✓' : '' }}</span><span>{{ role }}</span></button></div><small class="role-hint">Select one or more job titles</small></div></div>
-              <div class="field"><span>Preferred countries</span><div class="country-picker"><div class="selected-countries"><span class="country-chip" *ngFor="let country of selectedCountries"><img class="country-flag" [src]="flagImage(country.code)" alt="" loading="lazy" (error)="$any($event.target).hidden=true; $any($event.target.nextElementSibling).hidden=false"><span class="country-code-fallback" aria-hidden="true" hidden>{{ country.code }}</span><span>{{ country.name }}</span><button type="button" [attr.aria-label]="'Remove '+country.name" (click)="removeCountry(country.code)">×</button></span><input [(ngModel)]="countrySearch" name="countrySearch" placeholder="Search countries" autocomplete="off" (focus)="showCountryOptions=true" (input)="showCountryOptions=true" (keydown)="countryKeydown($event)"></div><div class="country-options" *ngIf="showCountryOptions && filteredCountries.length" role="listbox"><button type="button" role="option" [attr.aria-selected]="false" *ngFor="let country of filteredCountries" (mousedown)="$event.preventDefault()" (click)="addCountry(country)"><img class="country-flag" [src]="flagImage(country.code)" alt="" loading="lazy" (error)="$any($event.target).hidden=true"><span>{{ country.name }}</span><small>{{ country.code }}</small></button></div></div></div>
-              <label class="field"><span>Internship duration</span><select [(ngModel)]="preferences.internshipDuration" name="duration"><option value="">Select duration</option><option>3 months</option><option>6 months</option><option>12 months</option><option>Flexible</option></select></label>
-              <label class="field"><span>Start date</span><input [(ngModel)]="preferences.startDate" name="startDate" type="month"></label>
+            <div class="wizard-navigation">
+              <button *ngIf="wizardStep > 0" class="wizard-back" type="button" (click)="previousWizardStep()"><span aria-hidden="true">←</span> Back</button>
+
+              <button class="button primary wizard-continue" type="submit" [disabled]="busy || companyLookupBusy">{{ wizardStep === wizardSteps.length - 1 ? 'Review search' : 'Continue' }}<span aria-hidden="true">→</span></button>
             </div>
-            <label class="field"><span>Additional requirements <small>Optional</small></span><textarea [(ngModel)]="preferences.additionalRequirements" name="requirements" rows="3" placeholder="Work authorization, industries, or other preferences"></textarea></label>
-            <div class="form-actions"><button class="button primary" type="submit" [disabled]="busy">Review</button></div>
           </form>
 
           <div *ngIf="reviewing" class="review-content">
@@ -89,10 +122,10 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
               <div><dt>Start date</dt><dd>{{ preferences.startDate || 'Not specified' }}</dd></div>
               <div *ngIf="preferences.additionalRequirements"><dt>Requirements</dt><dd>{{ preferences.additionalRequirements }}</dd></div>
             </dl>
-            <label *ngIf="liveMode" class="privacy-consent"><input type="checkbox" [(ngModel)]="privacyAcknowledged" name="privacyAcknowledged"><span>This uploads your CV to AWS for processing. CareerSignal sends CV text to the configured AI provider; GetProspect searches only the companies and HR/recruiting titles you selected and may enrich up to five emails. Email drafts are not sent.</span></label>
-            <div class="form-actions"><button class="button primary" type="button" (click)="runAnalysis()" [disabled]="busy || (liveMode && !privacyAcknowledged)">{{ busy ? 'Waiting for results' : 'Get results' }}</button></div>
+            <label class="privacy-consent"><input type="checkbox" [(ngModel)]="privacyAcknowledged" name="privacyAcknowledged"><span>This uploads your CV to AWS for processing. CareerSignal sends CV text to the configured AI provider; the contact search is limited to your selected companies and HR/recruiting titles and may enrich up to five email addresses. Email drafts are not sent.</span></label>
+            <div class="form-actions"><button class="button primary" type="button" (click)="runAnalysis()" [disabled]="busy || !privacyAcknowledged">{{ busy ? 'Waiting for results' : 'Get results' }}</button></div>
           </div>
-          <div *ngIf="busy" class="loading" role="status">{{ environmentMode ? 'Loading demo results…' : 'Waiting for workflow results…' }}</div>
+          <div *ngIf="busy" class="loading" role="status">Waiting for workflow results…</div>
           <div *ngIf="error" class="error-panel" role="alert">{{ error }}</div>
         </section>
 
@@ -115,27 +148,23 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
 
       </section>
 
-      <section *ngIf="result" class="panel discovery-panel">
-        <div class="discovery-heading"><div><h1>Review contacts</h1></div><div class="review-count"><strong>{{ reviewIndex < result.contacts.length ? reviewIndex + 1 : result.contacts.length }}</strong><span>of {{ result.contacts.length }}</span></div></div>
-
-        <div *ngIf="activeContact as person" class="contact-stage" [class.email-revealed]="!!revealedDraft">
+      <section *ngIf="result" class="panel discovery-panel" [class.email-revealed]="!!revealedDraft">
+        <div *ngIf="activeContact" class="contact-stage" [class.email-revealed]="!!revealedDraft" [class.advancing]="isDeciding">
           <div class="stack-card stack-card-back" aria-hidden="true"></div>
           <div class="stack-card stack-card-middle" aria-hidden="true"></div>
-          <article class="swipe-card" [class.dragging]="isDragging" [style.transform]="cardTransform" (pointerdown)="startSwipe($event)" (pointermove)="moveSwipe($event)" (pointerup)="endSwipe($event)" (pointercancel)="cancelSwipe()">
-
-            <div class="contact-card-top"><div class="company-identity"><img *ngIf="companyLogoUrl(person) as logoUrl" [src]="logoUrl" [alt]="''" loading="lazy" (error)="$any($event.target).hidden=true; $any($event.target.nextElementSibling).hidden=false"><span class="company-monogram" aria-hidden="true" hidden>{{ companyInitials(person.company) }}</span><h2>{{ person.company || 'Company unavailable' }}</h2></div><div class="contact-score" *ngIf="person.fitScore !== undefined"><strong>{{ person.fitScore }}</strong></div></div>
+          <article *ngFor="let person of visibleContacts; let cardIndex = index; trackBy: trackContact" class="swipe-card" [class.current-card]="cardIndex === 0" [class.next-card]="cardIndex === 1" [class.dragging]="cardIndex === 0 && isDragging" [style.transform]="cardIndex === 0 ? cardTransform : null" (pointerdown)="startSwipe($event, cardIndex === 0)" (pointermove)="moveSwipe($event, cardIndex === 0)" (pointerup)="endSwipe($event, cardIndex === 0)" (pointercancel)="cancelSwipe()">
+            <div class="contact-card-top"><div class="company-identity"><img *ngIf="companyLogoUrl(person) as logoUrl" [src]="logoUrl" [alt]="''" loading="lazy" (error)="fallbackCompanyLogo($event, person)"><span class="company-monogram" aria-hidden="true" hidden>{{ companyInitials(person.company) }}</span><h2>{{ person.company || 'Company unavailable' }}</h2></div><div class="contact-count"><strong>{{ reviewIndex + cardIndex + 1 }}</strong><span>of {{ result.contacts.length }}</span></div></div>
             <div class="contact-person-section"><div class="contact-person-row"><p class="contact-person-name">{{ person.fullName || 'Name unavailable' }}</p><a *ngIf="person.linkedinUrl" class="linkedin-link" [href]="person.linkedinUrl" target="_blank" rel="noreferrer"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20.45 20.45h-3.56v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.13 1.45-2.13 2.94v5.67H9.35V9h3.42v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.26 2.37 4.26 5.46v6.28ZM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12ZM7.12 20.45H3.56V9h3.56v11.45ZM22.23 0H1.77C.79 0 0 .77 0 1.72v20.56C0 23.23.79 24 1.77 24h20.45c.98 0 1.78-.77 1.78-1.72V1.72C24 .77 23.2 0 22.23 0Z"/></svg><span>View LinkedIn profile</span></a></div><p class="contact-title">{{ person.title || 'Title unavailable' }}<span *ngIf="companyIndustry(person) !== 'Company match'"> · {{ companyIndustry(person) }}</span></p></div>
-            <div class="reveal-area">
+            <div *ngIf="cardIndex === 0" class="reveal-area">
               <div class="destination-row"><input id="destination-address" [ngModel]="revealedDraft?.email || ''" (ngModelChange)="updateDraftEmail($event)" [ngModelOptions]="{standalone:true}" [placeholder]="revealedDraft ? 'Email unavailable' : 'Address hidden'" [readonly]="!revealedDraft"><button class="reveal-button" type="button" (click)="revealDraft(person)">{{ revealedDraft ? 'Hide draft' : 'Reveal' }}</button></div>
               <div *ngIf="revealedDraft as draft" class="draft-reveal">
                 <label class="field"><span>Subject</span><input [(ngModel)]="draft.subject" [name]="'subject'+reviewIndex"></label>
                 <label class="field"><span>Message</span><textarea [(ngModel)]="draft.body" [name]="'body'+reviewIndex" rows="7"></textarea></label>
-
                 <div class="draft-actions"><button class="button secondary" type="button" (click)="copyAddress(draft)">Copy address</button><button class="button secondary" type="button" (click)="copyDraft(draft)">Copy email</button><button class="button primary" type="button" (click)="markReviewed(reviewIndex)">{{ reviewed.has(reviewIndex) ? 'Reviewed' : 'Mark reviewed' }}</button></div>
               </div>
             </div>
-            <div class="swipe-actions"><button class="decision-button pass-button" type="button" (click)="decide('pass')" aria-label="Skip contact" title="Skip contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><button class="decision-button keep-button" type="button" (click)="decide('keep')" aria-label="Save contact" title="Save contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button></div>
-            <div class="swipe-stamp keep" *ngIf="swipeOffset > 40">SAVE</div><div class="swipe-stamp pass" *ngIf="swipeOffset < -40">PASS</div>
+            <div *ngIf="cardIndex === 0" class="swipe-actions"><button class="decision-button pass-button" type="button" (click)="decide('pass')" aria-label="Skip contact" title="Skip contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></button><button class="decision-button keep-button" type="button" (click)="decide('keep')" aria-label="Save contact" title="Save contact"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 12h14m-7-7 7 7-7 7"/></svg></button></div>
+            <div class="swipe-stamp keep" *ngIf="cardIndex === 0 && swipeOffset > 40">SAVE</div><div class="swipe-stamp pass" *ngIf="cardIndex === 0 && swipeOffset < -40">PASS</div>
           </article>
         </div>
 
@@ -149,6 +178,8 @@ const COUNTRY_OPTIONS: CountryOption[] = ISO_COUNTRY_CODES.split(' ').map(code =
   `
 })
 export class AppComponent {
+  linkedinUrl = environment.linkedinUrl;
+  githubUrl = environment.githubUrl;
   file: File | null = null;
   fileError = '';
   companySearch = '';
@@ -201,41 +232,32 @@ export class AppComponent {
   reviewed = new Set<number>();
   preferences: Preferences = { companyNames: [], contactTypes: [], countryCodes: [], targetRoles: [], internshipDuration: '6 months', startDate: '', additionalRequirements: '' };
 
-  liveMode = false;
+
   privacyAcknowledged = false;
+  readonly wizardSteps = [
+    { title: 'Let’s start with your CV.' },
+    { title: 'Which companies should we search?' },
+    { title: 'Who would you like to reach?' },
+    { title: 'What roles are you aiming for?' },
+    { title: 'Where and when?' },
+    { title: 'Anything else we should know?' },
+  ];
+  wizardStep = 0;
+  wizardDirection: 'forward' | 'backward' = 'forward';
+  get wizardProgress(): number { return ((this.wizardStep + 1) / this.wizardSteps.length) * 100; }
 
-  get environmentMode(): boolean { return !this.liveMode; }
-
-  constructor(private readonly demo: DemoDataService, private readonly api: CareerSignalApiService) {
-    this.liveMode = typeof sessionStorage !== 'undefined' && sessionStorage.getItem('careersignal-live-mode') === 'true';
+  constructor(private readonly api: CareerSignalApiService) {
     void fetch('/data/onet-computing-job-titles.json')
       .then(response => response.ok ? response.json() as Promise<string[]> : [])
       .then(titles => { this.roleOptions = Array.isArray(titles) ? titles : []; })
       .catch(() => { this.roleOptions = []; });
     void this.api.handleAuthCallback().then(authenticated => {
-      if (authenticated) {
-        this.liveMode = true;
-        sessionStorage.setItem('careersignal-live-mode', 'true');
-      }
+      if (!authenticated) this.api.signIn();
     }).catch(error => {
       this.error = error instanceof Error ? error.message : 'Cognito sign-in failed.';
     });
   }
 
-  toggleMode(): void {
-    if (this.liveMode) {
-      this.liveMode = false;
-      this.privacyAcknowledged = false;
-      this.api.signOut();
-      return;
-    }
-    this.privacyAcknowledged = false;
-    try {
-      this.api.signIn();
-    } catch (error) {
-      this.error = error instanceof Error ? error.message : 'Cognito is not configured.';
-    }
-  }
 
   get roleList(): string[] { return this.selectedRoles; }
   get countryList(): string[] { return this.selectedCountries.map(country => country.name); }
@@ -246,7 +268,7 @@ export class AppComponent {
   }
   async lookupCompanyMatches(): Promise<void> {
     const query = this.companySearch.trim().replace(/\s+/g, ' ');
-    if (!this.liveMode) { this.companyLookupError = 'Switch to Live mode to search GetProspect companies.'; return; }
+
     if (query.length < 2 || query.length > 100) { this.companyLookupError = 'Enter a company name between 2 and 100 characters.'; return; }
     if (this.selectedCompanies.length >= 5) { this.targetingError = 'Search up to five companies at a time.'; return; }
     this.companyLookupBusy = true;
@@ -355,30 +377,57 @@ export class AppComponent {
     if (event.key === 'Enter' && this.filteredCountries.length) { event.preventDefault(); this.addCountry(this.filteredCountries[0]); }
   }
   get activeContact(): Contact | null { return this.result?.contacts[this.reviewIndex] || null; }
-  get cardTransform(): string { return `translateX(${this.swipeOffset}px) rotate(${this.swipeOffset * 0.035}deg)`; }
+  get visibleContacts(): Contact[] { return this.result?.contacts.slice(this.reviewIndex, this.reviewIndex + 2) || []; }
+  trackContact(index: number, contact: Contact): string {
+    return contact.id || contact.linkedinUrl || `${contact.company || ''}:${contact.fullName || index}`;
+  }
+  get cardTransform(): string {
+    const rotation = Math.max(-7, Math.min(7, this.swipeOffset * 0.008));
+    return `translateX(${this.swipeOffset}px) rotate(${rotation}deg)`;
+  }
 
 
   private matchedCompany(person: Contact) { return this.result?.companies.find(company => company.id === person.companyId || company.name === person.company); }
   companyLogoUrl(person: Contact): string | null {
-    const personLogo = person.companyLogoUrl ? this.secureLogoUrl(person.companyLogoUrl) : null;
-    if (personLogo) return personLogo;
     const company = this.matchedCompany(person);
-    const matchedLogo = company ? this.companyLogoUrlFor(company) : null;
-    return matchedLogo || (person.companyDomain ? this.companyDomainLogoUrl(person.companyDomain) : null);
+    return this.companyDomainLogoUrl(company?.domain || company?.website || person.companyDomain);
   }
   companyLogoUrlFor(company: Company): string | null {
-    const providerLogo = company.logoUrl ? this.secureLogoUrl(company.logoUrl) : null;
-    if (providerLogo) return providerLogo;
     return this.companyDomainLogoUrl(company.domain || company.website);
   }
+  fallbackCompanyLogo(event: Event, target: Company | Contact): void {
+    const image = event.target as HTMLImageElement;
+    const contact = target as Contact;
+    const company = target as Company;
+    const domain = contact.companyDomain || this.matchedCompany(contact)?.domain ||
+      this.matchedCompany(contact)?.website || company.domain || company.website;
+    const host = this.companyHost(domain);
+    const logoDevUrl = host ? this.logoDevUrl(host) : null;
+    const currentUrl = image.currentSrc || image.src;
+    const fallback = logoDevUrl ? new URL(logoDevUrl, window.location.origin).href : null;
+    if (fallback && fallback !== currentUrl) {
+      image.src = fallback;
+      return;
+    }
+    image.hidden = true;
+    if (image.parentElement?.classList.contains('company-identity')) {
+      image.nextElementSibling?.removeAttribute('hidden');
+    }
+  }
   private companyDomainLogoUrl(value?: string | null): string | null {
+    const host = this.companyHost(value);
+    return host ? this.logoDevUrl(host) : null;
+  }
+  private companyHost(value?: string | null): string | null {
     if (!value) return null;
     try {
       const input = value.trim();
       const hostname = new URL(input.includes('://') ? input : `https://${input}`).hostname.toLowerCase();
-      const host = hostname.startsWith('www.') ? hostname.slice(4) : hostname;
-      return host ? `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128` : null;
+      return hostname.startsWith('www.') ? hostname.slice(4) : hostname;
     } catch { return null; }
+  }
+  private logoDevUrl(host: string): string {
+    return `/logos/${encodeURIComponent(host)}`;
   }
   private secureLogoUrl(value: string): string | null {
     try {
@@ -398,29 +447,48 @@ export class AppComponent {
     if (file.size > 10 * 1024 * 1024) { this.file = null; this.fileError = 'PDF must be 10 MB or smaller.'; return; }
     this.file = file;
     this.reviewing = false;
+    this.goToWizardStep(1);
   }
   submit(event: Event): void {
     event.preventDefault();
-    if (!this.file) { this.fileError = 'Choose a PDF CV first.'; return; }
-    this.targetingError = '';
-    this.contactTypeError = '';
-    if (this.companySearch.trim()) { this.targetingError = 'Search and select a company from the GetProspect results.'; return; }
-    if (!this.selectedCompanies.length) { this.targetingError = 'Select at least one company from the GetProspect results.'; return; }
-    if (this.selectedCompanies.length > 5) { this.targetingError = 'Search up to five companies at a time.'; return; }
-    if (!this.selectedContactTypes.length) { this.contactTypeError = 'Choose at least one HR or recruiting contact type.'; return; }
-    this.fileError = '';
-    this.preferences.companyNames = this.selectedCompanies.map(company => company.name);
-    this.preferences.contactTypes = [...this.selectedContactTypes];
-    this.preferences.targetRoles = this.roleList;
-    this.preferences.countryCodes = this.selectedCountries.map(country => country.code);
-    this.reviewing = true;
+    if (this.wizardStep === 0) {
+      if (!this.file) { this.fileError = 'Choose a PDF CV first.'; return; }
+      this.fileError = '';
+    }
+    if (this.wizardStep === 1) {
+      this.targetingError = '';
+      if (this.companySearch.trim()) { this.targetingError = 'Search and select a company from the results first.'; return; }
+      if (!this.selectedCompanies.length) { this.targetingError = 'Select at least one company to continue.'; return; }
+      if (this.selectedCompanies.length > 5) { this.targetingError = 'Search up to five companies at a time.'; return; }
+    }
+    if (this.wizardStep === 2) {
+      this.contactTypeError = '';
+      if (!this.selectedContactTypes.length) { this.contactTypeError = 'Choose at least one HR or recruiting function.'; return; }
+    }
+    if (this.wizardStep === this.wizardSteps.length - 1) {
+      this.preferences.companyNames = this.selectedCompanies.map(company => company.name);
+      this.preferences.contactTypes = [...this.selectedContactTypes];
+      this.preferences.targetRoles = this.roleList;
+      this.preferences.countryCodes = this.selectedCountries.map(country => country.code);
+      this.reviewing = true;
+      return;
+    }
+    this.goToWizardStep(this.wizardStep + 1);
+  }
+  goToWizardStep(step: number): void {
+    const nextStep = Math.max(0, Math.min(step, this.wizardSteps.length - 1));
+    this.wizardDirection = nextStep < this.wizardStep ? 'backward' : 'forward';
+    this.wizardStep = nextStep;
+  }
+  previousWizardStep(): void {
+    this.goToWizardStep(this.wizardStep - 1);
   }
   async runAnalysis(): Promise<void> {
-    if (this.liveMode && !this.privacyAcknowledged) return;
+    if (!this.privacyAcknowledged) return;
     this.busy = true;
     this.error = '';
     try {
-      this.result = this.liveMode ? await this.api.run(this.file!, this.preferences) : await this.demo.run('Fictional demonstration profile', this.preferences);
+      this.result = await this.api.run(this.file!, this.preferences);
       this.reviewIndex = 0;
       this.keptContacts.clear();
       this.skippedContacts = 0;
@@ -430,9 +498,10 @@ export class AppComponent {
     } finally { this.busy = false; }
   }
 
-  startSwipe(event: PointerEvent): void { if (this.isDeciding || (event.target as HTMLElement).closest('a,button,input,textarea')) return; this.startX = event.clientX; this.startY = event.clientY; this.isDragging = true; (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); }
-  moveSwipe(event: PointerEvent): void { if (!this.startX) return; const dx = event.clientX - this.startX; const dy = event.clientY - this.startY; if (Math.abs(dx) > Math.abs(dy)) this.swipeOffset = dx; }
-  endSwipe(event: PointerEvent): void {
+  startSwipe(event: PointerEvent, isActive = true): void { if (!isActive || this.isDeciding || (event.target as HTMLElement).closest('a,button,input,textarea')) return; this.startX = event.clientX; this.startY = event.clientY; this.isDragging = true; (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId); }
+  moveSwipe(event: PointerEvent, isActive = true): void { if (!isActive || !this.startX) return; const dx = event.clientX - this.startX; const dy = event.clientY - this.startY; if (Math.abs(dx) > Math.abs(dy)) this.swipeOffset = dx; }
+  endSwipe(event: PointerEvent, isActive = true): void {
+    if (!isActive) return;
     if (!this.startX) return;
     const dx = event.clientX - this.startX;
     this.startX = 0; this.startY = 0; this.isDragging = false;
@@ -450,7 +519,7 @@ export class AppComponent {
       this.revealedDraft = null;
       this.swipeOffset = 0;
       this.isDeciding = false;
-    }, 380);
+    }, 600);
   }
   private contactKey(contact: Contact): string { return String(contact.id || contact.linkedinUrl || contact.fullName || this.reviewIndex); }
   restartReview(): void { this.reviewIndex = 0; this.keptContacts.clear(); this.skippedContacts = 0; this.revealedDraft = null; }
@@ -472,7 +541,7 @@ export class AppComponent {
   private showToast(message: string): void { this.toast = message; setTimeout(() => this.toast = '', 2500); }
   markReviewed(index: number): void { this.reviewed.add(index); this.reviewed = new Set(this.reviewed); }
   reset(): void {
-    this.result = null; this.view = 'contacts'; this.reviewing = false; this.file = null; this.fileError = ''; this.reviewed.clear(); this.error = ''; this.selectedCountries = []; this.countrySearch = ''; this.preferences.countryCodes = []; this.selectedCompanies = []; this.companyResults = []; this.companySearch = ''; this.showCompanyOptions = false; this.companyLookupError = ''; this.preferences.companyNames = []; this.targetingError = ''; this.selectedContactTypes = []; this.customContactTypes = []; this.preferences.contactTypes = []; this.customContactTitle = ''; this.contactTypeError = ''; this.privacyAcknowledged = false;
+    this.result = null; this.view = 'contacts'; this.reviewing = false; this.wizardStep = 0; this.file = null; this.fileError = ''; this.reviewed.clear(); this.error = ''; this.selectedCountries = []; this.countrySearch = ''; this.preferences.countryCodes = []; this.selectedCompanies = []; this.companyResults = []; this.companySearch = ''; this.showCompanyOptions = false; this.companyLookupError = ''; this.preferences.companyNames = []; this.targetingError = ''; this.selectedContactTypes = []; this.customContactTypes = []; this.preferences.contactTypes = []; this.customContactTitle = ''; this.contactTypeError = ''; this.privacyAcknowledged = false;
     this.reviewIndex = 0; this.keptContacts.clear(); this.skippedContacts = 0; this.revealedDraft = null;
   }
 }

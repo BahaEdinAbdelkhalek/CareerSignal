@@ -1,12 +1,12 @@
-# Cloudflare Worker gateway setup
+# Legacy Azure Cloudflare gateway setup
 
-The Angular app and API gateway are served by the `careersignal` Cloudflare Worker. The browser sends searches to the same-origin `/api/searches` routes. The Worker authenticates the request with Cloudflare Access, adds the Azure Function key server-side, and polls Durable Functions without returning its management URL to the browser.
+**This guide is for the separate Azure Functions deployment only. Do not use it for the current AWS `main` deployment.** The current Angular app authenticates with Cognito and calls AWS API Gateway directly. This older gateway authenticates with Cloudflare Access, adds an Azure Function key server-side, and polls Durable Functions.
 
 ## Cloudflare Worker settings
 
 The Worker project must use:
 
-- Repository: `BahaEdinAbdelkhalek/CareerSignal`
+- Repository: your fork or GitHub repository
 - Production branch: `main`
 - Root directory: `CareerSignal-Web`
 - Build command: `npm test && npm run build`

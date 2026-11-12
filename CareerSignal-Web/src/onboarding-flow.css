@@ -1,0 +1,246 @@
+.app-shell.form-wizard-active {
+  width: 80%;
+  grid-template-columns: minmax(0, 1fr);
+  justify-content: center;
+  margin: clamp(20px, 5vw, 52px) auto 72px;
+}
+
+.form-wizard-active .discovery-empty {
+  display: none;
+}
+
+.form-wizard-active .upload-panel {
+  padding: clamp(24px, 6vw, 52px);
+  border-radius: 12px;
+}
+
+.form-wizard-active .upload-panel .panel-heading {
+  margin-bottom: 10px;
+  padding-bottom: 10px;
+}
+
+.guided-form {
+  width: 100%;
+}
+
+.wizard-progress-copy {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  color: #546057;
+  font-size: 11px;
+}
+
+
+.wizard-progress-copy strong {
+  color: #25362a;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+
+.wizard-progress-track {
+  height: 3px;
+  margin-top: 12px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #edf0ed;
+}
+
+.wizard-progress-track > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #242b25;
+  transition: width 420ms cubic-bezier(.22, 1, .36, 1);
+}
+
+.wizard-title-block {
+  padding: 34px 0 25px;
+}
+
+.wizard-title-block h2 {
+  max-width: 17ch;
+  margin: 0;
+  color: #1d2820;
+  font-size: clamp(32px, 5vw, 44px);
+  font-weight: 600;
+  letter-spacing: -.055em;
+  line-height: 1.08;
+}
+
+
+.wizard-file-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 19px;
+  padding: 11px 13px;
+  border: 1px solid #e4e8e4;
+  border-radius: 6px;
+  background: #fafbfa;
+}
+
+.wizard-file-check {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: #f0f1f0;
+  color: #111;
+  font-size: 13px;
+}
+
+.wizard-file-summary > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.wizard-file-summary strong {
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.wizard-file-summary small {
+  overflow: hidden;
+  color: #707870;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wizard-file-summary button {
+  margin-left: auto;
+  border: 0;
+  background: transparent;
+  color: #465349;
+  font-size: 10px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.wizard-stage {
+  min-height: 190px;
+}
+
+.wizard-step {
+  animation: wizard-slide-forward 480ms cubic-bezier(.22, 1, .36, 1) both;
+}
+
+.wizard-stage.backward .wizard-step {
+  animation-name: wizard-slide-backward;
+}
+
+@keyframes wizard-slide-forward {
+  from { opacity: 0; transform: translateX(34px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes wizard-slide-backward {
+  from { opacity: 0; transform: translateX(-34px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.wizard-step .field-label,
+.wizard-step .field > span {
+  color: #303a32;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.wizard-step .field {
+  margin-top: 0;
+}
+
+.wizard-upload-zone {
+  min-height: 185px;
+}
+
+.wizard-field-grid {
+  gap: 20px;
+}
+
+.wizard-field-grid .field {
+  min-width: 0;
+}
+
+.wizard-requirements textarea {
+  min-height: 145px;
+}
+
+.wizard-navigation {
+  display: flex;
+  min-height: 52px;
+  align-items: center;
+  gap: 14px;
+  margin-top: 28px;
+  padding-top: 16px;
+}
+
+.wizard-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 0;
+  border: 0;
+  background: transparent;
+  color: #465349;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.wizard-back span {
+  font-size: 16px;
+}
+
+.wizard-continue {
+  display: inline-flex;
+  margin-left: auto;
+  min-width: 132px;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.wizard-continue span {
+  font-size: 17px;
+  font-weight: 400;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+
+.wizard-continue:hover span {
+  transform: translateX(3px);
+}
+
+@media (max-width: 600px) {
+  .app-shell.form-wizard-active {
+    width: calc(100% - 20px);
+    margin: 14px auto 42px;
+  }
+
+  .form-wizard-active .upload-panel {
+    padding: 23px 19px;
+  }
+
+  .wizard-title-block {
+    padding: 28px 0 21px;
+  }
+
+  .wizard-title-block h2 {
+    font-size: clamp(30px, 9vw, 38px);
+  }
+
+  .wizard-field-grid {
+    grid-template-columns: 1fr;
+    gap: 17px;
+  }
+
+
+  .wizard-navigation {
+    justify-content: space-between;
+  }
+}

@@ -1,33 +1,40 @@
-# Cloudflare Worker gateway to AWS
+# AWS frontend and API integration
 
-On `main`, Angular calls the Worker at the same origin using the existing `/api/searches` contract. The Worker verifies Cloudflare Access, then signs server-to-server requests to the AWS API Gateway endpoint with HMAC. The AWS API does not trust user IDs supplied by ordinary callers; every routed API request must have a valid signature, recent timestamp, and one-use UUID nonce for mutations.
+## Current request path
 
-The Worker also converts PDF form uploads into a short-lived, signed S3 upload. The presigned URL stays between the Worker and S3 and is never sent back to Angular. The browser continues to poll using an opaque, owner-bound handle; AWS execution ARNs and S3 keys are not returned to it.
+The current `main` frontend uses Cognito authorization-code flow with PKCE and calls API Gateway directly with the Cognito access token. API Gateway validates the JWT. The Cloudflare Worker serves the Angular assets, public runtime configuration, and the company-logo proxy; it is not in the live API request path.
 
-## Cloudflare Worker configuration
+```text
+Browser -> Cloudflare Worker: Angular assets and public config
+Browser -> Cognito: sign-in and access token
+Browser -> API Gateway: authenticated API calls
+Browser -> private S3: short-lived presigned PDF upload
+```
 
-Set these as Worker variables:
+The AWS stack defines the API routes and Cognito JWT authorizer in `infra/aws/application.yml`. The frontend calls the API origin from `CAREERSIGNAL_PUBLIC_API_BASE_URL` and sends the access token as a bearer token. The API origin and Cognito client settings are public values, not credentials.
 
-- `ACCESS_ISSUER`: the exact Cloudflare Access team issuer, for example `https://<team-name>.cloudflareaccess.com`.
-- `ACCESS_AUD`: the audience tag for the Access application.
-- `CAREERSIGNAL_ALLOWED_EMAIL`: the one email address allowed to run Live searches.
-- `CAREERSIGNAL_AWS_API_URL`: the HTTPS origin from the AWS stack's `ApiBaseUrl` output, with no path, query, or trailing API route.
+## Cloudflare runtime variables
 
-Set these as Worker secrets:
+Set these Worker variables before deploying the Angular/Worker update:
 
-- `CAREERSIGNAL_GATEWAY_HMAC_KEY`: the same randomly generated value stored in the SSM SecureString's `gatewayHmacKey` field.
-- `CAREERSIGNAL_STATUS_ENCRYPTION_KEY`: a separate random 32-byte key encoded as 64 hexadecimal characters. It encrypts the opaque browser search handle.
+- `CAREERSIGNAL_PUBLIC_API_BASE_URL`: the `ApiBaseUrl` stack output, with no path or trailing route.
+- `CAREERSIGNAL_COGNITO_DOMAIN`: the `CognitoDomain` stack output.
+- `CAREERSIGNAL_COGNITO_CLIENT_ID`: the `CognitoUserPoolClientId` stack output.
+- `CAREERSIGNAL_PUBLIC_LINKEDIN_URL` and `CAREERSIGNAL_PUBLIC_GITHUB_URL`: optional HTTPS profile links shown in the header.
 
-Keep the Access application scoped to the Worker site/API and allow only the configured operator. The Worker rate limiter is declared in `wrangler.jsonc`; keep it enabled. Do not set `CAREERSIGNAL_TRUSTED_SERVER_AUTH` on Cloudflare. That flag is reserved for the separate Node container server, which removes inbound `x-ms-client-principal` headers before adding one from a verified session.
+The Worker returns these values from `/runtime-config.json`. Do not place provider credentials there. Keep `LOGO_DEV_PUBLISHABLE_KEY` as a Worker secret. Keep the model and GetProspect keys in the AWS SSM SecureString described in `infra/aws/README.md`.
 
-Never put any of these secrets in Angular environment files, GitHub variables exposed to builds, or source control. If the HMAC key is rotated, update both Cloudflare and SSM, then deploy the Worker. Keep old keys out of logs.
+For local Worker preview, put the public values and the Logo.dev key in the ignored `.dev.vars` file copied from `.dev.vars.example`. Do not commit `.dev.vars`.
 
-## Smoke test
+## Verification
 
-1. With Cloudflare Access signed out, request `POST /api/searches`; it must not reach the AWS API.
-2. Sign in as the allowlisted account and submit a **fictional** text CV.
-3. Confirm the Worker receives a 202 response and only returns an opaque `searchId`.
-4. Poll until the status is `Completed`. Verify the Angular workspace displays the same analysis, ranked companies, contacts, and drafts as the Azure path.
-5. Use AWS logs and DynamoDB/S3 metadata to troubleshoot. Never log CV text, model prompts, result bodies, HMAC signatures, presigned URLs, or provider keys.
+1. Open `/runtime-config.json` from the deployed Worker and confirm it contains only the API URL, Cognito client settings, and optional profile links. It must not contain any provider keys.
+2. Sign in through Cognito and confirm API requests use the AWS API Gateway origin with an `Authorization: Bearer` header.
+3. Confirm an unauthenticated API request is rejected by the API Gateway JWT authorizer.
+4. Run a fictional CV through the complete workflow. Check that the search reaches a terminal state and the result page handles both contacts and zero-contact outcomes.
+5. Confirm the Logo.dev key is not present in built assets, browser configuration, or responses from `/runtime-config.json`.
+6. Test deletion and verify the corresponding DynamoDB and S3 application data is removed. Remember that Step Functions execution history has its own retention period.
 
-The AWS API URL is public, but untrusted direct calls fail without the HMAC secret. The HMAC secret is a service credential: anyone who obtains it can impersonate a Worker request. Keep the Worker Access policy and secret access restricted, and rotate the key if it may have leaked.
+## Legacy Worker proxy
+
+`CareerSignal-Web/worker.mjs` still contains an older Cloudflare Access/HMAC proxy for `/api/searches`. The current Angular service does not call those routes, and the current AWS API template uses a Cognito JWT authorizer. Do not configure or depend on that legacy proxy for the current AWS frontend. Keep it in place until the deployed flow has been verified and any consumer of those legacy routes is ruled out.

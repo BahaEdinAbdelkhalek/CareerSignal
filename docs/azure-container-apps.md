@@ -1,6 +1,6 @@
-# Run CareerSignal in Azure Container Apps
+# Legacy: Run CareerSignal in Azure Container Apps
 
-This deployment uses one container app for both the Angular website and the Node.js gateway. The gateway sends requests to the existing Azure Functions workflow; the Azure Function key stays in Container Apps secrets and is never compiled into Angular.
+**This guide applies to the separate Azure Functions path, not the current AWS `main` deployment.** This deployment uses one container app for both the Angular website and the Node.js gateway. The gateway sends requests to the existing Azure Functions workflow; the Azure Function key stays in Container Apps secrets and is never compiled into Angular.
 
 ```text
 Browser -> Container App (Angular + gateway) -> Azure Functions -> Durable workflow
@@ -16,7 +16,7 @@ The GitHub Actions workflow at `.github/workflows/careersignal-container.yml` ru
 2. In GitHub, open the repository's **Actions** tab and wait for **Build CareerSignal container** to pass.
 3. Open your GitHub profile's **Packages** page and select `careersignal-web`.
 4. If Azure will pull the image without registry credentials, set the package visibility to **Public**. The image contains the same public application code as this public repository, but never put secrets in the image.
-5. The image name is `ghcr.io/bahaedinabdelkhalek/careersignal-web:latest`. The workflow also publishes an immutable commit-SHA tag. Use the SHA tag when you want to deploy a specific build.
+5. The image name is `ghcr.io/<your-github-owner>/careersignal-web:latest`. The workflow also publishes an immutable commit-SHA tag. Use the SHA tag when you want to deploy a specific build.
 
 If the workflow cannot publish, check the repository's **Settings → Actions → General → Workflow permissions** and allow workflows to write packages. Do not add an Azure key as a GitHub Actions variable for this image build.
 
@@ -24,11 +24,11 @@ If the workflow cannot publish, check the repository's **Settings → Actions �
 
 In the Azure Portal:
 
-1. Search **Container Apps**, select **Create**, then choose your Student subscription and `rg-hr-project` (or the resource group you intend to use).
+1. Search **Container Apps**, select **Create**, then choose your subscription and resource group.
 2. On **Basics**, set the app name to `careersignal-web` and choose a region that your subscription permits. Select **Consumption**. Create a Container Apps environment in that same region if you do not already have one.
 3. Use the wizard's default Log Analytics setup if required, but review the cost estimate before creating supporting resources.
 4. On **Container**, select a public registry / Docker Hub or other registry, and enter:
-   - Image: `ghcr.io/bahaedinabdelkhalek/careersignal-web`
+   - Image: `ghcr.io/<your-github-owner>/careersignal-web`
    - Tag: `latest` (or the immutable SHA tag from the successful GitHub Actions run)
    - Container name: `careersignal-web`
    - CPU and memory: start with the smallest values the portal allows.
@@ -69,7 +69,7 @@ Do not paste either secret into chat, GitHub, Angular environment files, or the 
 |---|---|
 | `CAREERSIGNAL_AUTH_PROVIDER` | `azure` |
 | `CAREERSIGNAL_ALLOWED_EMAIL` | The one account allowed to run live searches |
-| `CAREERSIGNAL_FUNCTION_APP_URL` | Function App origin only: `https://hr-function-brercabzfnf2d7gj.spaincentral-01.azurewebsites.net` (use this only if it is still your Function App) |
+| `CAREERSIGNAL_FUNCTION_APP_URL` | Function App origin only: `https://<your-function-app>.azurewebsites.net` |
 | `CAREERSIGNAL_FUNCTION_KEY` | Reference the `careersignal-function-key` secret |
 | `CAREERSIGNAL_STATUS_ENCRYPTION_KEY` | Reference the `careersignal-status-encryption-key` secret |
 | `PORT` | `8080` |
